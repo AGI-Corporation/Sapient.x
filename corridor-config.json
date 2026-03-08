@@ -1,0 +1,12 @@
+{
+  "region_id": "us-ca-sf-frontier-corridor",
+  "name": "SF Frontier Corridor",
+  "bbox": [-122.4194, 37.7749, -122.4094, 37.7849],
+  "default_layers": ["parcels", "utilities-underground", "stikk_spots", "routes"],
+  "scene_manifest_url": "/data/sf-parcels.geojson",
+  "stikk_program_id": "stikk-sf-pilot-2026",
+  "chain_id": 80001,
+  "asset_symbol": "USDx",
+  "max_contract_value_usdx": 500,
+  "nanda_region_tag": "us-ca-sf-frontier-corridor"
+}
