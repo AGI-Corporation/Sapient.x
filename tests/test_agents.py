@@ -1,11 +1,11 @@
 """Tests for Web4AGI agent classes."""
 
 import pytest
-from src.agents.parcel_agent import ParcelAgent, ParcelState
-from src.agents.trade_agent import TradeAgent, TradeOffer
 
+from src.agents.trade_agent import TradeAgent
 
 # ── ParcelAgent Tests ───────────────────────────────────────────────────────
+
 
 def test_parcel_agent_creation(parcel_agent):
     """Test ParcelAgent initialization."""
@@ -46,14 +46,14 @@ async def test_parcel_agent_trade(parcel_agent):
     """Test USDx trade between parcels."""
     # Deposit first
     await parcel_agent.deposit(amount_usdx=100.0)
-    
+
     # Execute trade
     result = await parcel_agent.trade(
         counterparty_id="test-parcel-002",
         amount_usdx=25.0,
         trade_type="transfer",
     )
-    
+
     assert result["success"] is True
     assert parcel_agent.state.balance_usdx == 75.0
 
@@ -101,6 +101,7 @@ async def test_parcel_agent_optimize(parcel_agent):
 
 # ── TradeAgent Tests ─────────────────────────────────────────────────────────
 
+
 def test_trade_agent_creation(trade_agent):
     """Test TradeAgent initialization."""
     assert trade_agent.agent_id == "test-trade-agent-001"
@@ -129,36 +130,51 @@ def test_trade_agent_place_bid(trade_agent):
         asset="data_access",
         amount_usdx=50.0,
     )
-    
+
     result = trade_agent.place_bid(
         offer_id=offer.offer_id,
         bidder_id="test-parcel-002",
         bid_amount=55.0,
     )
-    
+
     assert result["success"] is True
     assert len(offer.bids) == 1
     assert offer.best_bid()["amount"] == 55.0
 
 
-def test_trade_agent_close_offer(trade_agent):
+@pytest.mark.asyncio
+async def test_trade_agent_close_offer(trade_agent):
     """Test closing an offer and selecting winner."""
     offer = trade_agent.create_offer(
         seller_id="test-parcel-001",
         asset="parcel_lease",
         amount_usdx=200.0,
     )
-    
+
     trade_agent.place_bid(offer.offer_id, "bidder-A", 210.0)
     trade_agent.place_bid(offer.offer_id, "bidder-B", 220.0)
     trade_agent.place_bid(offer.offer_id, "bidder-C", 215.0)
-    
-    result = trade_agent.close_offer(offer.offer_id)
-    
+
+    result = await trade_agent.close_offer(offer.offer_id)
+
     assert result["success"] is True
     assert result["winner"] == "bidder-B"
     assert result["amount"] == 220.0
     assert len(trade_agent.trade_history) == 1
+
+
+@pytest.mark.asyncio
+async def test_trade_agent_settle_trade(trade_agent):
+    """Test settling a closed trade."""
+    offer = trade_agent.create_offer(
+        seller_id="seller-001", asset="digital_twin_metadata", amount_usdx=50.0
+    )
+    trade_agent.place_bid(offer.offer_id, "buyer-001", 55.0)
+    await trade_agent.close_offer(offer.offer_id)
+
+    result = await trade_agent.settle_trade(offer.offer_id)
+    assert result["success"] is True
+    assert "tx_hash" in result
 
 
 def test_trade_agent_contract_templates(trade_agent):
@@ -170,30 +186,31 @@ def test_trade_agent_contract_templates(trade_agent):
         monthly_usdx=100.0,
         duration_months=6,
     )
-    
+
     assert lease["type"] == "parcel_lease"
     assert lease["terms"]["total_usdx"] == 600.0
-    
+
     data_access = TradeAgent.data_access_contract(
         provider_id="0xProvider",
         consumer_id="0xConsumer",
         dataset="parcel_analytics",
         price_usdx=25.0,
     )
-    
+
     assert data_access["type"] == "data_access"
     assert data_access["terms"]["price_usdx"] == 25.0
 
 
-def test_trade_agent_volume_calculation(trade_agent):
+@pytest.mark.asyncio
+async def test_trade_agent_volume_calculation(trade_agent):
     """Test trade volume calculation."""
     offer1 = trade_agent.create_offer("seller-1", "asset-1", 100.0)
     trade_agent.place_bid(offer1.offer_id, "buyer-1", 105.0)
-    trade_agent.close_offer(offer1.offer_id)
-    
+    await trade_agent.close_offer(offer1.offer_id)
+
     offer2 = trade_agent.create_offer("seller-2", "asset-2", 50.0)
     trade_agent.place_bid(offer2.offer_id, "buyer-2", 52.0)
-    trade_agent.close_offer(offer2.offer_id)
-    
+    await trade_agent.close_offer(offer2.offer_id)
+
     total_volume = trade_agent.volume_usdx()
     assert total_volume == 157.0  # 105 + 52

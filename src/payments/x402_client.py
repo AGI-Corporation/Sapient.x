@@ -9,18 +9,21 @@ Reference: https://x402.org
 import hashlib
 import hmac
 import json
-import time
 import os
+import time
 import uuid
-from typing import Any, Dict, List, Optional, TypedDict
+from typing import Any, TypedDict
+
 
 class TransactionResult(TypedDict):
     """Result of an x402 transaction."""
+
     success: bool
-    tx_hash: Optional[str]
-    amount: Optional[float]
-    error: Optional[str]
-    action: Optional[str]
+    tx_hash: str | None
+    amount: float | None
+    error: str | None
+    action: str | None
+
 
 try:
     import httpx
@@ -36,6 +39,7 @@ def _to_micro(amount: float) -> int:
     """Convert human-readable USDx to micro-units (6 decimal places)."""
     return int(round(amount * 10**USDX_DECIMALS))
 
+
 def _from_micro(micro_amount: int) -> float:
     """Convert micro-units back to human-readable USDx."""
     return float(micro_amount) / 10**USDX_DECIMALS
@@ -49,7 +53,7 @@ class X402Client:
 
     def __init__(
         self,
-        private_key: Optional[str] = None,
+        private_key: str | None = None,
         gateway_url: str = X402_GATEWAY,
         timeout: int = 30,
     ):
@@ -64,7 +68,7 @@ class X402Client:
         self._nonce += 1
         return self._nonce
 
-    def _sign(self, payload: Dict) -> str:
+    def _sign(self, payload: dict) -> str:
         """HMAC-SHA256 sign a payload with the agent's private key for X402 compliance."""
         if not self.private_key:
             return "unsigned-simulation"
@@ -79,14 +83,14 @@ class X402Client:
             digestmod=hashlib.sha256,
         ).hexdigest()
 
-    async def _post(self, endpoint: str, body: Dict) -> Dict:
+    async def _post(self, endpoint: str, body: dict) -> dict:
         """POST to the x402 gateway. Returns parsed JSON response."""
         if httpx is None:
             return {
                 "success": True,
                 "simulated": True,
                 "endpoint": endpoint,
-                "tx_hash": f"sim-tx-{uuid.uuid4()}"
+                "tx_hash": f"sim-tx-{uuid.uuid4()}",
             }
 
         url = f"{self.gateway_url}/{endpoint}"
@@ -98,7 +102,7 @@ class X402Client:
             except Exception as e:
                 return {"success": False, "error": f"X402 Gateway Error: {e}"}
 
-    async def _get(self, endpoint: str, params: Optional[Dict] = None) -> Dict:
+    async def _get(self, endpoint: str, params: dict | None = None) -> dict:
         """GET from the x402 gateway. Returns parsed JSON response."""
         if httpx is None:
             return {"success": True, "simulated": True, "balance_usdx": 1000.0}
@@ -145,7 +149,7 @@ class X402Client:
     ) -> TransactionResult:
         """Deposit USDx into the agent's wallet."""
         nonce = self._next_nonce()
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "action": "deposit",
             "amount_micro": _to_micro(amount),
             "source": source,
@@ -159,7 +163,7 @@ class X402Client:
             "tx_hash": res.get("tx_hash"),
             "amount": amount,
             "error": res.get("error"),
-            "action": "deposit"
+            "action": "deposit",
         }
 
     async def create_payment(
@@ -172,12 +176,12 @@ class X402Client:
         # 2. Balance Check
         balance = await self.get_balance(self.get_address())
         if balance < amount_usdx:
-             return {
+            return {
                 "success": False,
                 "tx_hash": None,
                 "amount": amount_usdx,
                 "error": "Insufficient USDx balance",
-                "action": "transfer"
+                "action": "transfer",
             }
 
         # 3. Execute Transfer
@@ -188,11 +192,11 @@ class X402Client:
         to_address: str,
         amount: float,
         memo: str = "",
-        contract_terms: Optional[Dict] = None,
+        contract_terms: dict | None = None,
     ) -> TransactionResult:
         """Internal transfer implementation following x402 spec."""
         nonce = self._next_nonce()
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "action": "transfer",
             "to": to_address,
             "amount_micro": _to_micro(amount),
@@ -207,21 +211,26 @@ class X402Client:
 
         return {
             "success": res.get("success", False),
-            "tx_hash": res.get("tx_hash") or (f"0x{hashlib.sha256(str(time.time()).encode()).hexdigest()}" if res.get("success") else None),
+            "tx_hash": res.get("tx_hash")
+            or (
+                f"0x{hashlib.sha256(str(time.time()).encode()).hexdigest()}"
+                if res.get("success")
+                else None
+            ),
             "amount": amount,
             "error": res.get("error"),
-            "action": "transfer"
+            "action": "transfer",
         }
 
-    async def sign_transaction(self, tx_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def sign_transaction(self, tx_data: dict[str, Any]) -> dict[str, Any]:
         """Sign a raw transaction dictionary for x402 submission."""
         signature = self._sign(tx_data)
         return {
             **tx_data,
             "signature": signature,
-            "r": f"0x{signature[:32]}", # Simplified r/s for mock
+            "r": f"0x{signature[:32]}",  # Simplified r/s for mock
             "s": f"0x{signature[32:64]}",
-            "v": 27
+            "v": 27,
         }
 
     def sign_message(self, message: str) -> str:
@@ -236,13 +245,13 @@ class X402Client:
 
     async def sign_contract(
         self,
-        contract: Dict[str, Any],
+        contract: dict[str, Any],
         counterparty: str,
         signer: str,
     ) -> TransactionResult:
         """Sign a smart contract payload and submit to x402 gateway."""
         nonce = self._next_nonce()
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "action": "sign_contract",
             "contract": contract,
             "counterparty": counterparty,
@@ -257,30 +266,30 @@ class X402Client:
             "tx_hash": res.get("tx_hash"),
             "amount": None,
             "error": res.get("error"),
-            "action": "sign_contract"
+            "action": "sign_contract",
         }
 
-    async def estimate_gas(self, to_address: str, amount_usdx: float) -> float:
+    async def estimate_gas(self, to_address: str, amount_usdx: float) -> float:  # noqa: ARG002
         """Estimate the gas cost for a USDx transaction."""
-        return 0.00015 # Typical stablecoin transfer cost on-chain
+        return 0.00015  # Typical stablecoin transfer cost on-chain
 
-    async def get_transaction_history(self, address: str) -> List[Dict[str, Any]]:
+    async def get_transaction_history(self, address: str) -> list[dict[str, Any]]:
         """Fetch historical x402 transactions for an address."""
         return await self._fetch_history(address)
 
-    async def _fetch_history(self, address: str) -> List[Dict[str, Any]]:
+    async def _fetch_history(self, address: str) -> list[dict[str, Any]]:
         """Internal method for fetching history, easily mocked in tests."""
         data = await self._get(f"history/{address}")
         if data.get("simulated"):
             return []
         return data.get("transactions", [])
 
-    def encode_function(self, function_name: str, params: List[Any]) -> str:
+    def encode_function(self, function_name: str, params: list[Any]) -> str:
         """Encode a contract function call (simplified ABI encoding)."""
         param_str = ",".join(map(str, params))
         return f"0x{hashlib.sha256(f'{function_name}({param_str})'.encode()).hexdigest()[:8]}"
 
-    async def batch_payment(self, payments: List[Dict[str, Any]]) -> List[TransactionResult]:
+    async def batch_payment(self, payments: list[dict[str, Any]]) -> list[TransactionResult]:
         """Process multiple payments in sequence."""
         results = []
         for p in payments:
@@ -288,7 +297,7 @@ class X402Client:
             results.append(res)
         return results
 
-    async def balance(self, address: str) -> Dict:
+    async def balance(self, address: str) -> dict:
         """Legacy compatibility method for querying balance dict."""
         bal = await self.get_balance(address)
         return {"address": address, "balance_usdx": bal, "success": True}
@@ -297,7 +306,7 @@ class X402Client:
 # ── Convenience factory ─────────────────────────────────────────────────────────
 
 
-def make_x402_client(env: Optional[Dict[str, str]] = None) -> "X402Client":
+def make_x402_client(env: dict[str, str] | None = None) -> "X402Client":
     """Create an X402Client from environment variables."""
     import os
 
