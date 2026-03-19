@@ -11,8 +11,9 @@ Workflow steps:
   4. Reflect — score outcome and update memory
 """
 
+import os
 from typing import Dict, Any, List, Optional, TypedDict
-from datetime import datetime
+from datetime import datetime, UTC
 
 try:
     from langgraph.graph import StateGraph, END
@@ -50,7 +51,6 @@ class ParcelOptState(TypedDict):
 
 def _get_llm():
     """Return the configured LLM (Sentient Foundation or OpenAI fallback)."""
-    import os
     sentient_key = os.getenv("SENTIENT_API_KEY")
     sentient_url = os.getenv("SENTIENT_BASE_URL", "https://api.sentientfoundation.ai/v1")
     openai_key = os.getenv("OPENAI_API_KEY")
@@ -129,7 +129,7 @@ def execute_node(state: ParcelOptState) -> ParcelOptState:
     # Here we record the simulated action.
     action = {
         "strategy": chosen,
-        "executed_at": datetime.utcnow().isoformat(),
+        "executed_at": datetime.now(UTC).isoformat(),
         "status": "simulated",
     }
     actions = state.get("actions_taken", []) + [action]
@@ -225,7 +225,7 @@ async def run_parcel_optimization(
     }
 
     graph = _get_graph()
-    if graph is None:
+    if graph is None or not LANGGRAPH_AVAILABLE:
         # Fallback: run nodes directly without LangGraph
         state = assess_node(initial)
         state = plan_node(state)

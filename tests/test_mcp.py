@@ -14,9 +14,10 @@ def test_mcp_toolkit_creation(mcp_toolkit):
     assert mcp_toolkit.local_only is True
 
 
-def test_mcp_toolkit_list_tools(mcp_toolkit):
+@pytest.mark.asyncio
+async def test_mcp_toolkit_list_tools(mcp_toolkit):
     """Test listing available MCP tools."""
-    tools = mcp_toolkit.list_tools()
+    tools = await mcp_toolkit.list_tools()
     assert isinstance(tools, list)
     assert len(tools) > 0
     
@@ -24,7 +25,6 @@ def test_mcp_toolkit_list_tools(mcp_toolkit):
     for tool in tools:
         assert "name" in tool
         assert "description" in tool
-        assert "parameters" in tool
 
 
 @pytest.mark.asyncio
@@ -45,24 +45,23 @@ async def test_mcp_receive_message(mcp_toolkit):
     # Simulate incoming message
     mock_message = {
         "from": "agent-002",
-        "content": {"type": "response", "data": "test"},
-        "timestamp": "2026-03-07T20:00:00Z"
+        "to": "test-mcp-001",
+        "payload": {"type": "response", "data": "test"},
+        "sent_at": "2026-03-07T20:00:00Z"
     }
     
-    with patch.object(mcp_toolkit, '_poll_messages', new_callable=AsyncMock) as mock_poll:
-        mock_poll.return_value = [mock_message]
-        
-        messages = await mcp_toolkit.receive_messages()
-        assert len(messages) == 1
-        assert messages[0]["from"] == "agent-002"
+    mcp_toolkit.inject_message(mock_message)
+    messages = await mcp_toolkit.receive_messages()
+    assert len(messages) == 1
+    assert messages[0]["from"] == "agent-002"
 
 
 @pytest.mark.asyncio
 async def test_mcp_call_tool(mcp_toolkit):
     """Test calling an MCP tool."""
     result = await mcp_toolkit.call_tool(
-        tool_name="get_location_data",
-        parameters={"lat": 37.7749, "lng": -122.4194}
+        tool_name="parcel_get_place_hierarchy",
+        parameters={"lat": 37.7749, "lon": -122.4194}
     )
     
     assert result["success"] is True
@@ -72,7 +71,7 @@ async def test_mcp_call_tool(mcp_toolkit):
 @pytest.mark.asyncio
 async def test_mcp_register_custom_tool(mcp_toolkit):
     """Test registering a custom tool."""
-    def custom_tool(param1: str, param2: int) -> dict:
+    async def custom_tool(param1: str, param2: int) -> dict:
         return {"result": f"{param1}-{param2}"}
     
     mcp_toolkit.register_tool(
@@ -85,7 +84,7 @@ async def test_mcp_register_custom_tool(mcp_toolkit):
         }
     )
     
-    tools = mcp_toolkit.list_tools()
+    tools = await mcp_toolkit.list_tools()
     tool_names = [t["name"] for t in tools]
     assert "custom_tool" in tool_names
 
@@ -113,8 +112,8 @@ def test_mcp_validate_message_format(mcp_toolkit):
     valid_message = {
         "from": "agent-001",
         "to": "agent-002",
-        "content": {"type": "test"},
-        "timestamp": "2026-03-07T20:00:00Z"
+        "payload": {"type": "test"},
+        "sent_at": "2026-03-07T20:00:00Z"
     }
     
     assert mcp_toolkit.validate_message(valid_message) is True
@@ -148,26 +147,31 @@ async def test_mcp_message_queue(mcp_toolkit):
     
     # Check queue status
     queue_size = mcp_toolkit.get_queue_size()
-    assert queue_size >= 0
+    assert queue_size == 5
 
 
 def test_mcp_tool_parameter_validation(mcp_toolkit):
     """Test tool parameter validation."""
     tool_spec = {
         "name": "test_tool",
-        "parameters": {
-            "required_param": {"type": "string", "required": True},
-            "optional_param": {"type": "integer", "required": False}
+        "input_schema": {
+            "required": ["required_param"],
+            "properties": {
+                "required_param": {"type": "string"},
+                "optional_param": {"type": "integer"}
+            }
         }
     }
     
     # Valid parameters
     valid_params = {"required_param": "value"}
-    assert mcp_toolkit.validate_parameters(tool_spec, valid_params) is True
+    valid, err = mcp_toolkit.validate_parameters(tool_spec, valid_params)
+    assert valid is True
     
     # Missing required parameter
     invalid_params = {"optional_param": 42}
-    assert mcp_toolkit.validate_parameters(tool_spec, invalid_params) is False
+    valid, err = mcp_toolkit.validate_parameters(tool_spec, invalid_params)
+    assert valid is False
 
 
 @pytest.mark.asyncio
@@ -183,7 +187,7 @@ async def test_mcp_connection_status(mcp_toolkit):
 @pytest.mark.asyncio
 async def test_mcp_retry_mechanism(mcp_toolkit):
     """Test automatic retry on failed messages."""
-    with patch.object(mcp_toolkit, '_send_raw', new_callable=AsyncMock) as mock_send:
+    with patch.object(mcp_toolkit, 'send', new_callable=AsyncMock) as mock_send:
         # First two calls fail, third succeeds
         mock_send.side_effect = [
             Exception("Network error"),

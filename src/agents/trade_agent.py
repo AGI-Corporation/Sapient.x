@@ -6,7 +6,7 @@ Built on top of ParcelAgent with added auction and batch-trade logic.
 
 import asyncio
 from typing import Dict, List, Optional, Any
-from datetime import datetime
+from datetime import datetime, UTC
 
 
 class TradeOffer:
@@ -22,15 +22,15 @@ class TradeOffer:
         self.seller_id = seller_id
         self.asset = asset
         self.amount_usdx = amount_usdx
-        self.expires_at = datetime.utcnow().timestamp() + ttl_seconds
+        self.expires_at = datetime.now(UTC).timestamp() + ttl_seconds
         self.bids: List[Dict] = []
         self.accepted: Optional[Dict] = None
 
     def is_expired(self) -> bool:
-        return datetime.utcnow().timestamp() > self.expires_at
+        return datetime.now(UTC).timestamp() > self.expires_at
 
     def add_bid(self, bidder_id: str, bid_amount: float) -> None:
-        self.bids.append({"bidder": bidder_id, "amount": bid_amount, "ts": datetime.utcnow().isoformat()})
+        self.bids.append({"bidder": bidder_id, "amount": bid_amount, "ts": datetime.now(UTC).isoformat()})
 
     def best_bid(self) -> Optional[Dict]:
         if not self.bids:
@@ -55,7 +55,7 @@ class TradeAgent:
         amount_usdx: float,
         ttl_seconds: int = 300,
     ) -> TradeOffer:
-        offer_id = f"offer-{seller_id}-{int(datetime.utcnow().timestamp())}"
+        offer_id = f"offer-{seller_id}-{int(datetime.now(UTC).timestamp())}"
         offer = TradeOffer(offer_id, seller_id, asset, amount_usdx, ttl_seconds)
         self.offers[offer_id] = offer
         return offer
@@ -83,7 +83,7 @@ class TradeAgent:
             "winner": winner["bidder"],
             "amount": winner["amount"],
             "asset": offer.asset,
-            "closed_at": datetime.utcnow().isoformat(),
+            "closed_at": datetime.now(UTC).isoformat(),
         }
         self.trade_history.append(record)
         return {"success": True, **record}
@@ -130,7 +130,7 @@ class TradeAgent:
                 "duration_months": duration_months,
                 "total_usdx": monthly_usdx * duration_months,
             },
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
             "status": "pending_signatures",
         }
 
@@ -151,7 +151,7 @@ class TradeAgent:
                 "access_type": "read",
                 "duration": "perpetual",
             },
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
             "status": "pending_signatures",
         }
 

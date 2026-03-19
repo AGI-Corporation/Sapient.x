@@ -10,9 +10,10 @@ Agents can:
 
 import uuid
 import asyncio
-from typing import Optional, Dict, Any
+import logging
+from typing import Optional, Dict, Any, List
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, UTC
 
 from src.payments.x402_client import X402Client
 from src.mcp.mcp_tools import MCPToolkit
@@ -26,7 +27,7 @@ class ParcelState:
     metadata: Dict[str, Any] = field(default_factory=dict)
     balance_usdx: float = 0.0
     active: bool = True
-    last_updated: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    last_updated: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
 
 class ParcelAgent:
@@ -39,6 +40,7 @@ class ParcelAgent:
         location: Optional[Dict[str, float]] = None,
         wallet_private_key: Optional[str] = None,
     ):
+        self.logger = logging.getLogger(f"ParcelAgent.{parcel_id or 'init'}")
         self.parcel_id = parcel_id or str(uuid.uuid4())
         self.owner_address = owner_address
         self.location = location or {"lat": 37.7749, "lng": -122.4194, "alt": 0.0}
@@ -56,7 +58,7 @@ class ParcelAgent:
     def update_metadata(self, key: str, value: Any) -> None:
         """Update a metadata field on the parcel."""
         self.state.metadata[key] = value
-        self.state.last_updated = datetime.utcnow().isoformat()
+        self.state.last_updated = datetime.now(UTC).isoformat()
 
     def get_state(self) -> Dict[str, Any]:
         """Return the current parcel state as a dict."""
@@ -70,34 +72,51 @@ class ParcelAgent:
             "last_updated": self.state.last_updated,
         }
 
-    # ── Communication ─────────────────────────────────────────────────────────
+    # ── Communication (Refined MCP Interoperability) ──────────────────────────
 
     async def send_message(self, target_parcel_id: str, content: Dict[str, Any]) -> Dict:
-        """Send an MCP message to another parcel agent."""
-        return await self.mcp.send(
-            to=target_parcel_id,
-            payload={
-                "from": self.parcel_id,
-                "timestamp": datetime.utcnow().isoformat(),
+        """Send a standardized MCP message to another parcel agent."""
+        self.logger.debug(f"Sending MCP message to {target_parcel_id}: {content.get('type')}")
+        return await self.mcp.send_message(
+            target_id=target_parcel_id,
+            content={
+                "parcel_id": self.parcel_id,
+                "timestamp": datetime.now(UTC).isoformat(),
                 **content,
             },
         )
 
-    async def receive_messages(self) -> list:
-        """Drain the incoming message queue."""
-        messages = []
-        while not self._message_queue.empty():
-            messages.append(await self._message_queue.get())
-        return messages
+    async def receive_messages(self) -> List[Dict]:
+        """Poll MCP toolkit and local queue for incoming messages."""
+        # 1. Fetch from Route.X (MCP)
+        remote_msgs = await self.mcp.receive_messages()
 
-    # ── Trading ───────────────────────────────────────────────────────────────
+        # 2. Fetch from local Queue
+        local_msgs = []
+        while not self._message_queue.empty():
+            local_msgs.append(await self._message_queue.get())
+
+        return remote_msgs + local_msgs
+
+    # ── Trading (Refined Interoperability) ────────────────────────────────────
 
     async def deposit(self, amount_usdx: float) -> Dict:
         """Deposit USDx into the parcel wallet via x402."""
-        result = await self.x402.deposit(amount=amount_usdx)
-        if result.get("success"):
-            self.state.balance_usdx += amount_usdx
-        return result
+        self.logger.info(f"Initiating deposit of {amount_usdx} USDx")
+        try:
+            # We use the MCP tool for balance query interoperability
+            bal_info = await self.mcp.call_tool("parcel_get_usdx_balance", parcel_id=self.parcel_id)
+
+            result = await self.x402.deposit(amount=amount_usdx)
+            if result.get("success"):
+                self.state.balance_usdx += amount_usdx
+                self.logger.info(f"Successfully deposited {amount_usdx} USDx. New balance: {self.state.balance_usdx}")
+            else:
+                self.logger.error(f"Deposit failed: {result.get('error', 'Unknown error')}")
+            return result
+        except Exception as e:
+            self.logger.exception(f"Exception during deposit: {e}")
+            return {"success": False, "error": str(e)}
 
     async def trade(
         self,
@@ -106,24 +125,46 @@ class ParcelAgent:
         trade_type: str = "transfer",
         contract_terms: Optional[Dict] = None,
     ) -> Dict:
-        """Execute a USDx trade with another parcel agent."""
+        """Execute a USDx trade with another parcel agent using MCP tools."""
+        self.logger.info(f"Initiating trade: {trade_type} {amount_usdx} USDx to {counterparty_id}")
+
+        # Use refined MCP toolkit for validation/interoperability
         if self.state.balance_usdx < amount_usdx:
+            self.logger.warning(f"Trade failed: Insufficient balance ({self.state.balance_usdx} < {amount_usdx})")
             return {"success": False, "error": "Insufficient USDx balance"}
 
-        result = await self.x402.transfer(
-            to_address=counterparty_id,
-            amount=amount_usdx,
-            memo=f"{trade_type}:{self.parcel_id}->{counterparty_id}",
-            contract_terms=contract_terms,
-        )
-        if result.get("success"):
-            self.state.balance_usdx -= amount_usdx
-        return result
+        try:
+            # Execute transfer via refined X402 client
+            result = await self.x402.transfer(
+                to_address=counterparty_id,
+                amount=amount_usdx,
+                memo=f"{trade_type}:{self.parcel_id}->{counterparty_id}",
+                contract_terms=contract_terms,
+            )
+
+            if result.get("success"):
+                self.state.balance_usdx -= amount_usdx
+                self.logger.info(f"Trade successful. New balance: {self.state.balance_usdx}")
+
+                # Notify counterparty via MCP message
+                await self.send_message(counterparty_id, {
+                    "type": "payment_received",
+                    "amount": amount_usdx,
+                    "tx_hash": result.get("tx_hash"),
+                    "trade_type": trade_type
+                })
+            else:
+                self.logger.error(f"Trade failed: {result.get('error', 'Unknown error')}")
+            return result
+        except Exception as e:
+            self.logger.exception(f"Exception during trade: {e}")
+            return {"success": False, "error": str(e)}
 
     async def sign_contract(
         self, counterparty_id: str, contract: Dict[str, Any]
     ) -> Dict:
-        """Sign a smart contract with another parcel agent."""
+        """Sign a smart contract with another parcel agent using X402 protocol."""
+        self.logger.info(f"Signing contract with {counterparty_id}: {contract.get('type')}")
         return await self.x402.sign_contract(
             contract=contract,
             counterparty=counterparty_id,
@@ -136,6 +177,7 @@ class ParcelAgent:
         """Run the LangGraph optimization workflow for this parcel."""
         from src.graphs.langgraph_workflow import run_parcel_optimization
 
+        self.logger.info("Starting parcel optimization workflow")
         return await run_parcel_optimization(
             parcel_state=self.get_state(),
             context=context or {},
@@ -145,37 +187,49 @@ class ParcelAgent:
 
     async def run(self, cycles: int = 0) -> None:
         """Main agent loop. Runs indefinitely (cycles=0) or for N cycles."""
+        self.logger.info(f"Starting agent run loop (cycles={cycles})")
         count = 0
         while self.state.active:
             msgs = await self.receive_messages()
             for msg in msgs:
-                await self._handle_message(msg)
+                # Standardize message extraction from MCP envelope
+                payload = msg.get("payload", msg.get("content", msg))
+                await self._handle_message(payload)
+
             await asyncio.sleep(1)
             count += 1
             if cycles and count >= cycles:
                 break
+        self.logger.info("Agent run loop stopped")
 
     async def _handle_message(self, msg: Dict) -> None:
         """Route incoming MCP messages to appropriate handlers."""
         msg_type = msg.get("type", "unknown")
+        sender = msg.get("from", msg.get("parcel_id", "unknown"))
+
+        self.logger.info(f"Handling message of type '{msg_type}' from {sender}")
+
         if msg_type == "trade_request":
             await self.trade(
-                counterparty_id=msg["from"],
+                counterparty_id=sender,
                 amount_usdx=msg["amount"],
                 trade_type=msg.get("trade_type", "transfer"),
             )
         elif msg_type == "contract_offer":
             await self.sign_contract(
-                counterparty_id=msg["from"],
+                counterparty_id=sender,
                 contract=msg["contract"],
             )
         elif msg_type == "optimize":
             await self.optimize(context=msg.get("context"))
+        elif msg_type == "payment_received":
+            self.logger.info(f"Confirmed payment of {msg.get('amount')} received from {sender}")
         else:
-            print(f"[ParcelAgent {self.parcel_id}] Unknown message type: {msg_type}")
+            self.logger.warning(f"Unknown message type: {msg_type}")
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     agent = ParcelAgent(
         owner_address="0xYourWalletAddress",
         location={"lat": 37.7749, "lng": -122.4194, "alt": 0.0},

@@ -55,7 +55,7 @@ async def test_x402_sign_transaction(x402_client):
         "nonce": 1,
     }
     
-    signed_tx = x402_client.sign_transaction(tx_data)
+    signed_tx = await x402_client.sign_transaction(tx_data)
     assert "signature" in signed_tx
     assert "r" in signed_tx
     assert "s" in signed_tx
