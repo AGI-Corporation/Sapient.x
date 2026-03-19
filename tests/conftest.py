@@ -1,14 +1,13 @@
 """Pytest configuration and fixtures for Web4AGI tests."""
 
-import pytest
 import asyncio
-from typing import Dict, Any
+from typing import Any
 
+import pytest
 from src.agents.parcel_agent import ParcelAgent
 from src.agents.trade_agent import TradeAgent
-from src.payments.x402_client import X402Client
 from src.mcp.mcp_tools import MCPToolkit
-
+from src.payments.x402_client import X402Client
 
 # ── Event loop fixture for async tests ─────────────────────────────────────────
 
@@ -23,7 +22,7 @@ def event_loop():
 # ── Test data fixtures ───────────────────────────────────────────────────────
 
 @pytest.fixture
-def sample_location() -> Dict[str, float]:
+def sample_location() -> dict[str, float]:
     """Sample SF location for testing."""
     return {"lat": 37.7749, "lng": -122.4194, "alt": 0.0}
 
@@ -76,7 +75,7 @@ def mcp_toolkit() -> MCPToolkit:
 # ── Mock API fixtures ────────────────────────────────────────────────────────
 
 @pytest.fixture
-def sample_parcel_state() -> Dict[str, Any]:
+def sample_parcel_state() -> dict[str, Any]:
     """Sample parcel state for testing optimization workflows."""
     return {
         "parcel_id": "test-parcel-001",
@@ -90,7 +89,7 @@ def sample_parcel_state() -> Dict[str, Any]:
 
 
 @pytest.fixture
-def sample_trade_request() -> Dict[str, Any]:
+def sample_trade_request() -> dict[str, Any]:
     """Sample trade request payload."""
     return {
         "from_parcel_id": "test-parcel-001",
@@ -102,7 +101,7 @@ def sample_trade_request() -> Dict[str, Any]:
 
 
 @pytest.fixture
-def sample_contract() -> Dict[str, Any]:
+def sample_contract() -> dict[str, Any]:
     """Sample parcel lease contract."""
     return {
         "type": "parcel_lease",

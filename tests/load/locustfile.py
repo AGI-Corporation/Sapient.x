@@ -12,12 +12,11 @@ Run with:
     locust -f tests/load/locustfile.py --headless -u 1000 -r 50 --run-time 60s
 """
 
-from locust import HttpUser, task, between, events
-from locust.env import Environment
-import json
+import logging
 import random
 import string
-import logging
+
+from locust import HttpUser, between, task
 
 logger = logging.getLogger(__name__)
 
@@ -35,19 +34,19 @@ def random_address():
 
 class AgentUser(HttpUser):
     """Simulates a Web4AGI agent user making API calls."""
-    
+
     wait_time = between(1, 3)
-    
+
     def on_start(self):
         """Set up user session on start."""
         self.agent_id = None
         self.auth_token = None
         self.trade_id = None
         self.contract_id = None
-        
+
         # Authenticate first
         self.login()
-        
+
         # Create an agent
         self.create_agent()
 
@@ -69,7 +68,7 @@ class AgentUser(HttpUser):
                 # Not a real login, continue with mock
                 self.auth_token = "mock_token"
                 response.success()
-    
+
     @property
     def headers(self):
         return {"Authorization": f"Bearer {self.auth_token}"}
@@ -186,9 +185,9 @@ class AgentUser(HttpUser):
 
 class HighFrequencyTradingUser(AgentUser):
     """Simulates high-frequency trading agents with more aggressive loads."""
-    
+
     wait_time = between(0.1, 0.5)  # Much shorter wait
-    
+
     @task(10)
     def rapid_trade(self):
         """Rapid trading operations for high-frequency simulation."""
@@ -219,9 +218,9 @@ class HighFrequencyTradingUser(AgentUser):
 
 class MarketObserverUser(HttpUser):
     """Simulates market observers that primarily read data."""
-    
+
     wait_time = between(2, 5)
-    
+
     @task(5)
     def view_market_data(self):
         """View market data."""

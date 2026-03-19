@@ -8,11 +8,10 @@ Tests the Web4AGI WebSocket functionality including:
 - Error handling
 """
 
-import pytest
 import asyncio
-from unittest.mock import Mock, AsyncMock, patch, MagicMock
-from typing import List
-import json
+from unittest.mock import AsyncMock, Mock
+
+import pytest
 
 
 class TestWebSocketConnection:
@@ -28,7 +27,7 @@ class TestWebSocketConnection:
 
         # Test connection acceptance
         await mock_websocket.accept()
-        
+
         assert mock_websocket.accept.called
 
     @pytest.mark.asyncio
@@ -37,12 +36,12 @@ class TestWebSocketConnection:
         mock_connection_manager = Mock()
         mock_connection_manager.connect = AsyncMock()
         mock_connection_manager.active_connections = []
-        
+
         mock_websocket = AsyncMock()
-        
+
         # Register client
         await mock_connection_manager.connect(mock_websocket, "agent_123")
-        
+
         assert mock_connection_manager.connect.called
         mock_connection_manager.connect.assert_called_with(mock_websocket, "agent_123")
 
@@ -52,12 +51,12 @@ class TestWebSocketConnection:
         mock_connection_manager = Mock()
         mock_connection_manager.disconnect = Mock()
         mock_connection_manager.active_connections = []
-        
+
         mock_websocket = AsyncMock()
-        
+
         # Disconnect client
         mock_connection_manager.disconnect(mock_websocket)
-        
+
         assert mock_connection_manager.disconnect.called
 
     @pytest.mark.asyncio
@@ -65,11 +64,11 @@ class TestWebSocketConnection:
         """Test sending a message to a specific client."""
         mock_websocket = AsyncMock()
         mock_websocket.send_json = AsyncMock()
-        
+
         message = {"type": "trade_update", "agent_id": "agent_123", "status": "completed"}
-        
+
         await mock_websocket.send_json(message)
-        
+
         mock_websocket.send_json.assert_called_once_with(message)
 
     @pytest.mark.asyncio
@@ -80,9 +79,9 @@ class TestWebSocketConnection:
             "type": "place_order",
             "data": {"action": "buy", "amount": 100.0}
         })
-        
+
         message = await mock_websocket.receive_json()
-        
+
         assert message["type"] == "place_order"
         assert message["data"]["action"] == "buy"
 
@@ -96,13 +95,13 @@ class TestWebSocketBroadcasting:
         mock_clients = [AsyncMock() for _ in range(3)]
         for client in mock_clients:
             client.send_json = AsyncMock()
-        
+
         broadcast_message = {"type": "market_update", "data": {"price": 5000.0}}
-        
+
         # Simulate broadcasting
         for client in mock_clients:
             await client.send_json(broadcast_message)
-        
+
         for client in mock_clients:
             client.send_json.assert_called_once_with(broadcast_message)
 
@@ -111,16 +110,16 @@ class TestWebSocketBroadcasting:
         """Test broadcasting agent status updates."""
         mock_connection_manager = Mock()
         mock_connection_manager.broadcast = AsyncMock()
-        
+
         status_update = {
             "type": "agent_status",
             "agent_id": "agent_123",
             "status": "active",
             "balance": 1500.0
         }
-        
+
         await mock_connection_manager.broadcast(status_update)
-        
+
         mock_connection_manager.broadcast.assert_called_once_with(status_update)
 
     @pytest.mark.asyncio
@@ -128,7 +127,7 @@ class TestWebSocketBroadcasting:
         """Test broadcasting trade events to all subscribers."""
         mock_connection_manager = Mock()
         mock_connection_manager.broadcast = AsyncMock()
-        
+
         trade_event = {
             "type": "trade_executed",
             "trade_id": "trade_456",
@@ -137,9 +136,9 @@ class TestWebSocketBroadcasting:
             "amount": 100.0,
             "price": 50.0
         }
-        
+
         await mock_connection_manager.broadcast(trade_event)
-        
+
         mock_connection_manager.broadcast.assert_called_once()
 
     @pytest.mark.asyncio
@@ -147,16 +146,16 @@ class TestWebSocketBroadcasting:
         """Test sending message to a specific agent."""
         mock_connection_manager = Mock()
         mock_connection_manager.send_personal_message = AsyncMock()
-        
+
         personal_message = {
             "type": "notification",
             "message": "Trade completed successfully"
         }
-        
+
         await mock_connection_manager.send_personal_message(
             personal_message, "agent_123"
         )
-        
+
         mock_connection_manager.send_personal_message.assert_called_with(
             personal_message, "agent_123"
         )
@@ -171,10 +170,10 @@ class TestWebSocketMessageTypes:
         mock_websocket = AsyncMock()
         mock_websocket.receive_json = AsyncMock(return_value={"type": "ping"})
         mock_websocket.send_json = AsyncMock()
-        
+
         message = await mock_websocket.receive_json()
         assert message["type"] == "ping"
-        
+
         # Server should respond with pong
         await mock_websocket.send_json({"type": "pong", "timestamp": 1234567890})
         mock_websocket.send_json.assert_called_once()
@@ -188,11 +187,11 @@ class TestWebSocketMessageTypes:
             "agent_id": "agent_123"
         })
         mock_websocket.send_json = AsyncMock()
-        
+
         message = await mock_websocket.receive_json()
         assert message["type"] == "subscribe"
         assert message["agent_id"] == "agent_123"
-        
+
         # Confirm subscription
         await mock_websocket.send_json({
             "type": "subscribed",
@@ -204,16 +203,16 @@ class TestWebSocketMessageTypes:
         """Test streaming real-time market data."""
         mock_websocket = AsyncMock()
         mock_websocket.send_json = AsyncMock()
-        
+
         market_data = [
             {"type": "price_update", "parcel_id": "parcel_001", "price": 4800.0},
             {"type": "price_update", "parcel_id": "parcel_002", "price": 3200.0},
             {"type": "price_update", "parcel_id": "parcel_003", "price": 7500.0},
         ]
-        
+
         for data in market_data:
             await mock_websocket.send_json(data)
-        
+
         assert mock_websocket.send_json.call_count == 3
 
     @pytest.mark.asyncio
@@ -223,7 +222,7 @@ class TestWebSocketMessageTypes:
         mock_websocket_seller = AsyncMock()
         mock_websocket_buyer.send_json = AsyncMock()
         mock_websocket_seller.send_json = AsyncMock()
-        
+
         # Buyer makes offer
         offer = {
             "type": "contract_offer",
@@ -231,9 +230,9 @@ class TestWebSocketMessageTypes:
             "to": "agent_456",
             "terms": {"price": 5000.0, "parcel_id": "parcel_002"}
         }
-        
+
         await mock_websocket_buyer.send_json(offer)
-        
+
         # Seller receives offer and counters
         counter_offer = {
             "type": "contract_counter",
@@ -241,9 +240,9 @@ class TestWebSocketMessageTypes:
             "to": "agent_123",
             "terms": {"price": 5500.0, "parcel_id": "parcel_002"}
         }
-        
+
         await mock_websocket_seller.send_json(counter_offer)
-        
+
         mock_websocket_buyer.send_json.assert_called_once_with(offer)
         mock_websocket_seller.send_json.assert_called_once_with(counter_offer)
 
@@ -257,18 +256,18 @@ class TestWebSocketReconnection:
         mock_connection_manager = Mock()
         mock_connection_manager.connect = AsyncMock()
         mock_connection_manager.disconnect = Mock()
-        
+
         mock_websocket = AsyncMock()
         agent_id = "agent_123"
-        
+
         # Initial connection
         await mock_connection_manager.connect(mock_websocket, agent_id)
         assert mock_connection_manager.connect.called
-        
+
         # Disconnect
         mock_connection_manager.disconnect(mock_websocket)
         assert mock_connection_manager.disconnect.called
-        
+
         # Reconnect
         mock_websocket_new = AsyncMock()
         await mock_connection_manager.connect(mock_websocket_new, agent_id)
@@ -281,10 +280,10 @@ class TestWebSocketReconnection:
         mock_websocket.receive_json = AsyncMock(
             side_effect=Exception("Connection closed")
         )
-        
+
         try:
             await mock_websocket.receive_json()
-            assert False, "Should have raised exception"
+            raise AssertionError("Should have raised exception")
         except Exception as e:
             assert "Connection closed" in str(e)
 
@@ -297,9 +296,9 @@ class TestWebSocketReconnection:
             "balance": 1500.0,
             "open_trades": ["trade_789"]
         })
-        
+
         state = mock_state_manager.get_state("agent_123")
-        
+
         assert state["agent_id"] == "agent_123"
         assert state["balance"] == 1500.0
         assert "trade_789" in state["open_trades"]
@@ -313,19 +312,19 @@ class TestWebSocketConcurrency:
         """Test handling multiple concurrent WebSocket connections."""
         num_clients = 10
         mock_clients = [AsyncMock() for _ in range(num_clients)]
-        
+
         mock_connection_manager = Mock()
         mock_connection_manager.connect = AsyncMock()
-        
+
         # Connect all clients concurrently
         tasks = []
         for i, client in enumerate(mock_clients):
             tasks.append(
                 mock_connection_manager.connect(client, f"agent_{i}")
             )
-        
+
         await asyncio.gather(*tasks)
-        
+
         assert mock_connection_manager.connect.call_count == num_clients
 
     @pytest.mark.asyncio
@@ -335,12 +334,12 @@ class TestWebSocketConcurrency:
         mock_clients = [AsyncMock() for _ in range(num_clients)]
         for client in mock_clients:
             client.send_json = AsyncMock()
-        
+
         message = {"type": "global_update", "data": "market_closed"}
-        
+
         # Broadcast to all clients
         tasks = [client.send_json(message) for client in mock_clients]
         await asyncio.gather(*tasks)
-        
+
         for client in mock_clients:
             client.send_json.assert_called_once_with(message)

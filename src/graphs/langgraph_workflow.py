@@ -11,12 +11,12 @@ Workflow steps:
   4. Reflect — score outcome and update memory
 """
 
-from typing import Dict, Any, List, Optional, TypedDict
 from datetime import datetime
+from typing import Any, TypedDict
 
 try:
-    from langgraph.graph import StateGraph, END
     from langgraph.checkpoint.memory import MemorySaver
+    from langgraph.graph import END, StateGraph
     LANGGRAPH_AVAILABLE = True
 except ImportError:
     LANGGRAPH_AVAILABLE = False
@@ -24,7 +24,7 @@ except ImportError:
     END = "__end__"
 
 try:
-    from langchain_core.messages import HumanMessage, AIMessage
+    from langchain_core.messages import HumanMessage
     from langchain_openai import ChatOpenAI
     LANGCHAIN_AVAILABLE = True
 except ImportError:
@@ -35,13 +35,13 @@ except ImportError:
 # ── State Schema ───────────────────────────────────────────────────────────────
 
 class ParcelOptState(TypedDict):
-    parcel_state: Dict[str, Any]
-    context: Dict[str, Any]
-    assessment: Optional[str]
-    strategies: List[str]
-    chosen_strategy: Optional[str]
-    actions_taken: List[Dict]
-    reflection: Optional[str]
+    parcel_state: dict[str, Any]
+    context: dict[str, Any]
+    assessment: str | None
+    strategies: list[str]
+    chosen_strategy: str | None
+    actions_taken: list[dict]
+    reflection: str | None
     score: float
     iteration: int
 
@@ -106,7 +106,7 @@ Parcel state: {state['parcel_state']}
 List 3 concrete optimization strategies as a numbered list.
 Each strategy should be a single actionable sentence."""
         response = llm.invoke([HumanMessage(content=prompt)])
-        lines = [l.strip() for l in response.content.split("\n") if l.strip() and l[0].isdigit()]
+        lines = [line.strip() for line in response.content.split("\n") if line.strip() and line[0].isdigit()]
         strategies = lines[:3] if lines else [response.content]
     else:
         ps = state["parcel_state"]
@@ -208,9 +208,9 @@ def _get_graph():
 # ── Public Entry Point ───────────────────────────────────────────────────────────
 
 async def run_parcel_optimization(
-    parcel_state: Dict[str, Any],
-    context: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
+    parcel_state: dict[str, Any],
+    context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Run the optimization workflow for a parcel and return the final state."""
     initial: ParcelOptState = {
         "parcel_state": parcel_state,

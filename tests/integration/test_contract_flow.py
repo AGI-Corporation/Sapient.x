@@ -8,9 +8,9 @@ Tests the interaction between agents and the ContractManager:
 - Multi-party agreement scenarios
 """
 
+from unittest.mock import AsyncMock, Mock, patch
+
 import pytest
-from unittest.mock import Mock, AsyncMock, patch
-from datetime import datetime
 
 
 class TestContractLifecycle:
@@ -44,7 +44,7 @@ class TestContractLifecycle:
             "terms": "Standard land lease",
             "expiry": "2026-12-31"
         }
-        
+
         manager.propose = Mock(return_value="contract_123")
         contract_id = manager.propose(buyer.id, seller.id, contract_data)
         assert contract_id == "contract_123"
@@ -65,7 +65,7 @@ class TestContractLifecycle:
             "status": "executed",
             "tx_hash": "0xtx_contract_123"
         })
-        
+
         execution_result = await manager.execute(contract_id)
         assert execution_result["status"] == "executed"
         assert "tx_hash" in execution_result
@@ -76,12 +76,12 @@ class TestContractLifecycle:
         """Test contract rejection by counterparty."""
         manager = Mock()
         mock_manager_class.return_value = manager
-        
+
         contract_id = "contract_rejected"
         manager.reject = Mock(return_value=True)
-        
+
         assert manager.reject(contract_id, seller.id, "Price too low")
-        
+
         manager.get_status = Mock(return_value="rejected")
         assert manager.get_status(contract_id) == "rejected"
 
@@ -91,13 +91,13 @@ class TestContractLifecycle:
         """Test contract creation failure due to invalid terms."""
         manager = Mock()
         mock_manager_class.return_value = manager
-        
+
         invalid_terms = {"price": -100} # Invalid price
         manager.propose = Mock(side_effect=ValueError("Invalid contract terms"))
-        
+
         try:
             manager.propose(buyer.id, seller.id, invalid_terms)
-            assert False, "Should have raised ValueError"
+            raise AssertionError("Should have raised ValueError")
         except ValueError as e:
             assert str(e) == "Invalid contract terms"
 
@@ -111,20 +111,20 @@ class TestMultiPartyContracts:
         """Test a contract requiring three signatures."""
         manager = Mock()
         mock_manager_class.return_value = manager
-        
+
         contract_id = "tripartite_001"
         agents = ["agent_A", "agent_B", "agent_C"]
-        
+
         manager.get_required_signatures = Mock(return_value=agents)
         required = manager.get_required_signatures(contract_id)
         assert len(required) == 3
-        
+
         # Sign one by one
         manager.sign = Mock(return_value=True)
         for agent in agents:
             manager.sign(contract_id, agent, f"0xsig_{agent}")
-        
+
         assert manager.sign.call_count == 3
-        
+
         manager.is_fully_signed = Mock(return_value=True)
         assert manager.is_fully_signed(contract_id)

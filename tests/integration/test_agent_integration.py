@@ -1,9 +1,8 @@
 """Integration tests for agent component interactions."""
 
+from unittest.mock import AsyncMock, Mock
+
 import pytest
-import asyncio
-from typing import Dict, Any
-from unittest.mock import Mock, AsyncMock, patch
 
 
 @pytest.mark.integration
@@ -20,7 +19,7 @@ class TestAgentWalletIntegration:
         wallet_mock = Mock()
         wallet_mock.address = "0x1234"
         wallet_mock.is_connected = True
-        
+
         # TODO: Integrate actual agent + wallet
         assert wallet_mock.is_connected
         assert wallet_mock.address == agent_config["wallet"]["address"]
@@ -29,7 +28,7 @@ class TestAgentWalletIntegration:
         """Test agent can check wallet balance."""
         wallet_mock = AsyncMock()
         wallet_mock.get_balance.return_value = {"USDC": 1000, "USDT": 500}
-        
+
         # TODO: Implement agent.check_balance()
         balance = await wallet_mock.get_balance()
         assert balance["USDC"] == 1000
@@ -41,10 +40,10 @@ class TestAgentWalletIntegration:
             "amount": 100,
             "currency": "USDC"
         }
-        
+
         wallet_mock = AsyncMock()
         wallet_mock.send_payment.return_value = {"tx_hash": "0xABCD", "status": "pending"}
-        
+
         # TODO: Implement agent.make_payment()
         result = await wallet_mock.send_payment(**payment)
         assert result["status"] == "pending"
@@ -63,10 +62,10 @@ class TestAgentCommunicationIntegration:
             "type": "trade_proposal",
             "data": {"amount": 100, "asset": "USDC"}
         }
-        
+
         comm_layer_mock = AsyncMock()
         comm_layer_mock.send.return_value = {"message_id": "msg-001", "status": "sent"}
-        
+
         # TODO: Implement agent.send_message()
         result = await comm_layer_mock.send(message)
         assert result["status"] == "sent"
@@ -78,10 +77,10 @@ class TestAgentCommunicationIntegration:
             "type": "trade_response",
             "data": {"accepted": True}
         }
-        
+
         comm_layer_mock = AsyncMock()
         comm_layer_mock.receive.return_value = incoming_message
-        
+
         # TODO: Implement agent.receive_message()
         message = await comm_layer_mock.receive()
         assert message["from"] == "agent-002"
@@ -96,7 +95,7 @@ class TestAgentCommunicationIntegration:
             "to": "agent-002",
             "payload": {"action": "ping"}
         }
-        
+
         # TODO: Implement X402 protocol handling
         assert x402_message["protocol"] == "x402"
 
@@ -108,18 +107,13 @@ class TestAgentModelIntegration:
 
     async def test_agent_sentient_foundation_integration(self):
         """Test agent integrates with Sentient Foundation model."""
-        model_config = {
-            "name": "sentient-foundation",
-            "version": "1.0",
-            "capabilities": ["reasoning", "decision_making"]
-        }
-        
+
         model_mock = AsyncMock()
         model_mock.generate_response.return_value = {
             "decision": "accept_trade",
             "confidence": 0.85
         }
-        
+
         # TODO: Integrate Sentient Foundation model
         response = await model_mock.generate_response("Should I accept this trade?")
         assert response["decision"] == "accept_trade"
@@ -131,13 +125,13 @@ class TestAgentModelIntegration:
             "nodes": ["analyze", "decide", "execute"],
             "optimizer": "langgraph"
         }
-        
+
         langgraph_mock = AsyncMock()
         langgraph_mock.optimize_workflow.return_value = {
             "optimized": True,
             "steps_reduced": 2
         }
-        
+
         # TODO: Integrate LangGraph
         result = await langgraph_mock.optimize_workflow(workflow)
         assert result["optimized"] is True
@@ -156,10 +150,10 @@ class TestAgentStorageIntegration:
             "active_trades": 3,
             "last_update": "2025-01-15T12:00:00Z"
         }
-        
+
         storage_mock = AsyncMock()
         storage_mock.save.return_value = {"success": True, "version": 1}
-        
+
         # TODO: Implement agent.save_state()
         result = await storage_mock.save(agent_state)
         assert result["success"] is True
@@ -171,14 +165,14 @@ class TestAgentStorageIntegration:
             "agent_id": "agent-001",
             "balance": {"USDC": 1000}
         }
-        
+
         # TODO: Implement agent.load_state()
         state = await storage_mock.load("agent-001")
         assert state["agent_id"] == "agent-001"
 
 
 @pytest.mark.integration
-@pytest.mark.asyncio  
+@pytest.mark.asyncio
 class TestAgentContractIntegration:
     """Test integration between agent and smart contracts."""
 
@@ -190,13 +184,13 @@ class TestAgentContractIntegration:
             "amount": 1000,
             "currency": "USDC"
         }
-        
+
         contract_deployer_mock = AsyncMock()
         contract_deployer_mock.deploy.return_value = {
             "contract_address": "0xCONTRACT123",
             "tx_hash": "0xDEPLOY456"
         }
-        
+
         # TODO: Implement agent.deploy_contract()
         result = await contract_deployer_mock.deploy(contract_spec)
         assert result["contract_address"].startswith("0x")
@@ -204,13 +198,13 @@ class TestAgentContractIntegration:
     async def test_agent_sign_contract(self):
         """Test agent can sign smart contract with wallet."""
         contract_address = "0xCONTRACT123"
-        
+
         signer_mock = AsyncMock()
         signer_mock.sign.return_value = {
             "signature": "0xSIG789",
             "signer": "0x1234"
         }
-        
+
         # TODO: Implement agent.sign_contract()
         signature = await signer_mock.sign(contract_address)
         assert signature["signature"].startswith("0x")
@@ -218,13 +212,13 @@ class TestAgentContractIntegration:
     async def test_agent_monitor_contract_events(self):
         """Test agent can monitor smart contract events."""
         contract_address = "0xCONTRACT123"
-        
+
         event_monitor_mock = AsyncMock()
         event_monitor_mock.get_events.return_value = [
             {"event": "FundsDeposited", "amount": 1000},
             {"event": "SignatureAdded", "signer": "0x1234"}
         ]
-        
+
         # TODO: Implement agent.monitor_contract()
         events = await event_monitor_mock.get_events(contract_address)
         assert len(events) >= 1
@@ -239,19 +233,19 @@ class TestMultiAgentIntegration:
         """Test two agents can complete a trade together."""
         agent1_mock = AsyncMock()
         agent2_mock = AsyncMock()
-        
+
         # Agent 1 proposes trade
         agent1_mock.propose_trade.return_value = {
             "trade_id": "trade-001",
             "offer": {"asset": "USDC", "amount": 100}
         }
-        
+
         # Agent 2 accepts trade
         agent2_mock.accept_trade.return_value = {
             "trade_id": "trade-001",
             "status": "accepted"
         }
-        
+
         # TODO: Implement full trade flow
         proposal = await agent1_mock.propose_trade()
         acceptance = await agent2_mock.accept_trade(proposal["trade_id"])
@@ -264,7 +258,7 @@ class TestMultiAgentIntegration:
             {"agent_id": "agent-001", "capabilities": ["trading"]},
             {"agent_id": "agent-002", "capabilities": ["trading", "lending"]}
         ]
-        
+
         # TODO: Implement agent discovery
         agents = await discovery_service_mock.find_agents(capability="trading")
         assert len(agents) >= 2
@@ -282,13 +276,13 @@ class TestStablecoinIntegration:
             "amount": 100,
             "to": "0x5678"
         }
-        
+
         stablecoin_gateway_mock = AsyncMock()
         stablecoin_gateway_mock.transfer.return_value = {
             "tx_hash": "0xUSDC123",
             "status": "confirmed"
         }
-        
+
         # TODO: Implement USDC integration
         result = await stablecoin_gateway_mock.transfer(**payment)
         assert result["status"] == "confirmed"
@@ -296,10 +290,10 @@ class TestStablecoinIntegration:
     async def test_multi_currency_support(self):
         """Test agent supports multiple stablecoins."""
         supported_currencies = ["USDC", "USDT", "DAI"]
-        
+
         currency_manager_mock = Mock()
         currency_manager_mock.get_supported_currencies.return_value = supported_currencies
-        
+
         # TODO: Implement multi-currency support
         currencies = currency_manager_mock.get_supported_currencies()
         assert "USDC" in currencies

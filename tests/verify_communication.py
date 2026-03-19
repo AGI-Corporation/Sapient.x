@@ -1,7 +1,8 @@
 import asyncio
+
 import httpx
-import time
 from src.agents.parcel_agent import ParcelAgent
+
 
 async def run_verification():
     print("Starting agent-to-agent communication verification...")
@@ -17,7 +18,7 @@ async def run_verification():
     content = {"type": "greeting", "text": "Hello from Agent A!"}
     print(f"Agent A sending message to Agent B: {content}")
 
-    from unittest.mock import patch, AsyncMock
+    from unittest.mock import AsyncMock, patch
 
     with patch("httpx.AsyncClient.post") as mock_post, \
          patch("httpx.AsyncClient.get") as mock_get:

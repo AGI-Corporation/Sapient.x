@@ -4,12 +4,12 @@ Run with: uvicorn src.main:app --reload
 """
 
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.api import parcels, trades, contracts, payments, mcp
 from src import __version__
-
+from src.api import contracts, mcp, parcels, payments, trades
 
 # ── Global state ──────────────────────────────────────────────────────────────
 
@@ -18,7 +18,7 @@ TRADE_AGENTS = {}   # agent_id -> TradeAgent instance
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_app: FastAPI):
     """Startup/shutdown lifecycle for FastAPI app."""
     # Startup: initialize any persistent connections, etc.
     print(f"[Web4AGI] Starting up... version {__version__}")
