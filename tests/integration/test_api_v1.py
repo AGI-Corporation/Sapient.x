@@ -129,3 +129,79 @@ def test_system_visibility(client):
     assert response.status_code == 200
     geojson = response.json()
     assert geojson["type"] == "FeatureCollection"
+
+
+def test_nanda_registry_flow(client):
+    """Test registering and discovering agents in NANDA registry."""
+    # 1. Register
+    agent_id = "test-agent-001"
+    fact_data = {
+        "agent_id": agent_id,
+        "capabilities": ["compute", "storage"],
+        "metadata": {"version": "1.0.0"},
+        "owner_address": "0x1234567890123456789012345678901234567890",
+    }
+    response = client.post("/api/v1/registry/register", json=fact_data)
+    assert response.status_code == 200
+    assert response.json()["success"] is True
+    assert response.json()["agent"]["agent_id"] == agent_id
+
+    # 2. Get Fact
+    response = client.get(f"/api/v1/registry/{agent_id}")
+    assert response.status_code == 200
+    assert response.json()["capabilities"] == ["compute", "storage"]
+
+    # 3. Discover (all)
+    response = client.get("/api/v1/registry/discover")
+    assert response.status_code == 200
+    assert len(response.json()) >= 1
+
+    # 4. Discover (by capability)
+    response = client.get("/api/v1/registry/discover?capability=compute")
+    assert response.status_code == 200
+    assert any(a["agent_id"] == agent_id for a in response.json())
+
+    # 5. Discover (non-existent capability)
+    response = client.get("/api/v1/registry/discover?capability=magic")
+    assert response.status_code == 200
+    assert not any(a["agent_id"] == agent_id for a in response.json())
+
+
+def test_incentive_flow(client):
+    """Test executing a USDx incentive via API."""
+    # 1. Setup agents
+    p1 = client.post(
+        "/api/v1/parcels/",
+        json={
+            "owner_address": "0x1111111111111111111111111111111111111111",
+            "location": {"lat": 0, "lng": 0},
+        },
+    ).json()
+    p2 = client.post(
+        "/api/v1/parcels/",
+        json={
+            "owner_address": "0x2222222222222222222222222222222222222222",
+            "location": {"lat": 1, "lng": 1},
+        },
+    ).json()
+
+    # 2. Deposit funds to sponsor
+    client.post(f"/api/v1/payments/deposit", json={"parcel_id": p1["parcel_id"], "amount_usdx": 50.0})
+
+    # 3. Execute incentive
+    incentive_data = {
+        "parcel_id": p1["parcel_id"],
+        "target_parcel_id": p2["parcel_id"],
+        "amount_usdx": 10.0,
+        "incentive_type": "check_in",
+        "metadata": {"reason": "visit_loyalty"},
+    }
+    response = client.post("/api/v1/trades/incentive", json=incentive_data)
+    assert response.status_code == 200
+    assert response.json()["success"] is True
+
+    # 4. Verify balances
+    b1 = client.get(f"/api/v1/parcels/{p1['parcel_id']}").json()["balance_usdx"]
+    b2 = client.get(f"/api/v1/parcels/{p2['parcel_id']}").json()["balance_usdx"]
+    assert b1 == 40.0
+    assert b2 == 10.0

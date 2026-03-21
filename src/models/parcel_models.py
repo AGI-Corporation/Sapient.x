@@ -136,6 +136,14 @@ class PaymentStreamRequest(BaseModel):
     duration_seconds: int = Field(..., ge=60)
 
 
+class IncentiveRequest(BaseModel):
+    parcel_id: str
+    target_parcel_id: str
+    amount_usdx: float = Field(..., gt=0)
+    incentive_type: str = "check_in"
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 # ── MCP Messages ───────────────────────────────────────────────────────────
 
 
@@ -149,6 +157,23 @@ class MCPMessage(BaseModel):
 class MCPToolCall(BaseModel):
     tool_name: str
     arguments: dict[str, Any] = Field(default_factory=dict)
+
+
+# ── NANDA Agent Registry ───────────────────────────────────────────────────
+
+
+class AgentFact(BaseModel):
+    agent_id: str
+    capabilities: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    owner_address: str
+    status: str = "active"
+
+
+class RegistryResponse(BaseModel):
+    success: bool
+    message: str
+    agent: AgentFact | None = None
 
 
 # ── Generic responses ───────────────────────────────────────────────────────

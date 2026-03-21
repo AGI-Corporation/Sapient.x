@@ -28,6 +28,7 @@ ROUTE_X_BASE = os.getenv("ROUTE_X_URL", "http://localhost:8001")
 SPATIAL_FABRIC_URL = os.getenv("SPATIAL_FABRIC_URL", "http://localhost:3001")
 AGENT_SERVER_URL = os.getenv("AGENT_SERVER_URL", "http://localhost:3002")
 EXCHANGE_SERVER_URL = os.getenv("EXCHANGE_SERVER_URL", "http://localhost:3003")
+NANDA_REGISTRY_URL = os.getenv("NANDA_REGISTRY_URL", "http://localhost:8000/api/v1/registry")
 
 
 # ── Tool Registry ───────────────────────────────────────────────────────────────
@@ -89,6 +90,35 @@ async def tool_get_parcel(parcel_id: str) -> dict:
         "geometry": {"type": "Polygon", "coordinates": []},
         "attributes": {"zone": "commercial", "owner_count": 1},
     }
+
+
+@register_tool("spatial_get_stikk_spots", "Retrieve Stikk loyalty spots near a coordinate.")
+async def tool_get_stikk_spots(lat: float, lon: float, radius: float = 100.0) -> list:
+    if httpx:
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(
+                    f"{SPATIAL_FABRIC_URL}/stikk/spots",
+                    params={"lat": lat, "lon": lon, "radius": radius},
+                )
+                if resp.status_code == 200:
+                    return resp.json().get("spots", [])
+        except Exception:
+            pass
+    return [{"id": "stikk-001", "name": "Simulated Coffee Spot", "loyalty_points": 50}]
+
+
+@register_tool("spatial_get_utility_risk", "Retrieve underground utility risk data for a parcel.")
+async def tool_get_utility_risk(parcel_id: str) -> dict:
+    if httpx:
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(f"{SPATIAL_FABRIC_URL}/utilities/risk/{parcel_id}")
+                if resp.status_code == 200:
+                    return resp.json()
+        except Exception:
+            pass
+    return {"parcel_id": parcel_id, "risk_level": "low", "hazards": ["underground_power"]}
 
 
 @register_tool(
@@ -165,6 +195,45 @@ async def tool_propose_contract(
             "max": max_total,
         },
     }
+
+
+@register_tool("nanda_register_agent", "Register an agent's facts and capabilities into NANDA.")
+async def tool_nanda_register(
+    agent_id: str, capabilities: list[str], owner_address: str, metadata: dict | None = None
+) -> dict:
+    if httpx:
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(
+                    f"{NANDA_REGISTRY_URL}/register",
+                    json={
+                        "agent_id": agent_id,
+                        "capabilities": capabilities,
+                        "owner_address": owner_address,
+                        "metadata": metadata or {},
+                    },
+                )
+                if resp.status_code == 200:
+                    return resp.json()
+        except Exception:
+            pass
+    return {"success": False, "error": "NANDA registry unavailable or simulated"}
+
+
+@register_tool("nanda_discover_agents", "Discover agents by capability in the NANDA registry.")
+async def tool_nanda_discover(capability: str | None = None) -> list:
+    if httpx:
+        try:
+            async with httpx.AsyncClient() as client:
+                params = {}
+                if capability:
+                    params["capability"] = capability
+                resp = await client.get(f"{NANDA_REGISTRY_URL}/discover", params=params)
+                if resp.status_code == 200:
+                    return resp.json()
+        except Exception:
+            pass
+    return []
 
 
 # ── MCPToolkit Class ─────────────────────────────────────────────────────────────

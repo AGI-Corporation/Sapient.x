@@ -76,11 +76,31 @@ class TradeAgent:
         self.logger.info(f"Created trade offer {offer_id} for asset {asset}")
         return offer
 
-    async def broadcast_offer(self, offer_id: str, target_agents: list[str]) -> list[dict]:
-        """Broadcast an active offer to multiple agents via MCP."""
+    async def broadcast_offer(self, offer_id: str, target_agents: list[str] | None = None) -> list[dict]:
+        """Broadcast an active offer to multiple agents via MCP.
+        If target_agents is None, discovers them via NANDA for matching asset/trade types.
+        """
         offer = self.offers.get(offer_id)
         if not offer:
             return [{"success": False, "error": "Offer not found"}]
+
+        if target_agents is None:
+            self.logger.info(f"Discovering matching agents via NANDA for asset: {offer.asset}")
+            try:
+                # We search for agents with 'trading' or asset-specific capabilities
+                res = await self.mcp.call_tool("nanda_discover_agents", capability="trading")
+                if res.get("success") and isinstance(res.get("data"), list):
+                    target_agents = [
+                        a["agent_id"]
+                        for a in res["data"]
+                        if a["agent_id"] not in (self.agent_id, offer.seller_id)
+                    ]
+            except Exception as e:
+                self.logger.error(f"NANDA discovery for broadcast failed: {e}")
+
+        if not target_agents:
+            self.logger.warning(f"No target agents found for broadcast of {offer_id}")
+            return []
 
         self.logger.info(f"Broadcasting offer {offer_id} to {len(target_agents)} agents")
         return await self.mcp.broadcast(

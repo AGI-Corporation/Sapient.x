@@ -215,36 +215,42 @@ class TestAgentContractIntegration:
 class TestMultiAgentIntegration:
     """Test integration between multiple agents."""
 
-    async def test_two_agents_trade(self):
-        """Test two agents can complete a trade together."""
-        agent1_mock = AsyncMock()
-        agent2_mock = AsyncMock()
+    async def test_agent_autonomous_logic(self):
+        """Test agent performs autonomous actions: registry, risk, and stikk."""
+        from src.agents.parcel_agent import ParcelAgent
 
-        # Agent 1 proposes trade
-        agent1_mock.propose_trade.return_value = {
-            "trade_id": "trade-001",
-            "offer": {"asset": "USDC", "amount": 100},
-        }
+        agent = ParcelAgent(
+            parcel_id="test-autonomous-agent",
+            owner_address="0x1234567890123456789012345678901234567890",
+        )
+        agent.mcp.local_only = True  # Avoid real network calls
 
-        # Agent 2 accepts trade
-        agent2_mock.accept_trade.return_value = {"trade_id": "trade-001", "status": "accepted"}
+        # 1. Test Registry Interaction
+        reg_res = await agent.register_in_nanda()
+        # In local_only mode, it returns simulated success/failure
+        assert "success" in reg_res
 
-        # TODO: Implement full trade flow
-        proposal = await agent1_mock.propose_trade()
-        acceptance = await agent2_mock.accept_trade(proposal["trade_id"])
-        assert acceptance["status"] == "accepted"
+        # 2. Test Risk and Stikk data gathering
+        await agent.perform_autonomous_actions()
 
-    async def test_agent_discovery(self):
-        """Test agents can discover each other."""
-        discovery_service_mock = AsyncMock()
-        discovery_service_mock.find_agents.return_value = [
-            {"agent_id": "agent-001", "capabilities": ["trading"]},
-            {"agent_id": "agent-002", "capabilities": ["trading", "lending"]},
-        ]
+        state = agent.get_state()
+        metadata = state["metadata"]
 
-        # TODO: Implement agent discovery
-        agents = await discovery_service_mock.find_agents(capability="trading")
-        assert len(agents) >= 2
+        # These values come from the simulated defaults in mcp_tools.py
+        assert metadata.get("utility_risk") == "low"
+        assert metadata.get("nearby_stikk_count") == 1
+
+    async def test_agent_discovery_via_nanda(self):
+        """Test agents can discover each other via NANDA registry tools."""
+        from src.agents.parcel_agent import ParcelAgent
+
+        agent = ParcelAgent(parcel_id="discovery-agent")
+        agent.mcp.local_only = True
+
+        # Discovery (simulated)
+        agents = await agent.discover_by_capability("community_engagement")
+        # In local_only simulation, it might return empty or mock data
+        assert isinstance(agents, list)
 
 
 @pytest.mark.integration

@@ -13,7 +13,7 @@ from src import __version__
 # ── Global state ──────────────────────────────────────────────────────────────
 from src.agents.parcel_agent import ParcelAgent
 from src.agents.trade_agent import TradeAgent
-from src.api import contracts, mcp, parcels, payments, trades
+from src.api import contracts, mcp, parcels, payments, registry, trades
 
 PARCEL_AGENTS: dict[str, ParcelAgent] = {}  # parcel_id -> ParcelAgent instance
 TRADE_AGENTS: dict[str, TradeAgent] = {}  # agent_id -> TradeAgent instance
@@ -55,6 +55,7 @@ app.include_router(trades.router, prefix="/api/v1/trades", tags=["Trades"])
 app.include_router(contracts.router, prefix="/api/v1/contracts", tags=["Contracts"])
 app.include_router(payments.router, prefix="/api/v1/payments", tags=["Payments"])
 app.include_router(mcp.router, prefix="/api/v1/mcp", tags=["MCP"])
+app.include_router(registry.router, prefix="/api/v1/registry", tags=["NANDA Registry"])
 
 
 # ── OS Visibility ────────────────────────────────────────────────────────────

@@ -3,7 +3,13 @@
 from fastapi import APIRouter, HTTPException
 
 from src.agents.trade_agent import TradeAgent
-from src.models.parcel_models import BidRequest, OfferCreate, SuccessResponse, TradeRequest
+from src.models.parcel_models import (
+    BidRequest,
+    IncentiveRequest,
+    OfferCreate,
+    SuccessResponse,
+    TradeRequest,
+)
 
 router = APIRouter()
 
@@ -89,6 +95,30 @@ async def settle_trade(offer_id: str):
         raise HTTPException(status_code=400, detail=result["error"])
 
     return result
+
+
+@router.post("/incentive", response_model=SuccessResponse)
+async def execute_incentive(request: IncentiveRequest):
+    """Execute a USDx incentive payment (e.g., for loyalty or community check-in)."""
+    from src.main import PARCEL_AGENTS
+
+    if request.parcel_id not in PARCEL_AGENTS:
+        raise HTTPException(status_code=404, detail="Sponsoring parcel agent not found")
+
+    sponsor = PARCEL_AGENTS[request.parcel_id]
+
+    # Standard trade wrapping the incentive
+    result = await sponsor.trade(
+        counterparty_id=request.target_parcel_id,
+        amount_usdx=request.amount_usdx,
+        trade_type=f"incentive:{request.incentive_type}",
+        contract_terms=request.metadata,
+    )
+
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result.get("error", "Incentive failed"))
+
+    return SuccessResponse(message=f"Incentive {request.incentive_type} executed", data=result)
 
 
 @router.post("/direct", response_model=SuccessResponse)

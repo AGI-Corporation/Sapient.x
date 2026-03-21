@@ -115,7 +115,8 @@ class ParcelAgent:
                 lon=self.location["lng"] + 0.001,
             )
             if res.get("success") and "data" in res:
-                pid = res["data"].get("parcel_id")
+                data = res.get("data", {})
+                pid = data.get("parcel_id") if isinstance(data, dict) else None
                 if pid and pid != self.parcel_id:
                     neighbors.append(pid)
         except Exception as e:
@@ -123,23 +124,68 @@ class ParcelAgent:
 
         return neighbors
 
+    async def discover_by_capability(self, capability: str) -> list[str]:
+        """Discover other agents via the NANDA registry by capability."""
+        self.logger.info(f"Discovering agents with capability: {capability}")
+        try:
+            res = await self.mcp.call_tool("nanda_discover_agents", capability=capability)
+            if res.get("success") and isinstance(res.get("data"), list):
+                return [a["agent_id"] for a in res["data"] if a["agent_id"] != self.parcel_id]
+        except Exception as e:
+            self.logger.error(f"NANDA discovery failed: {e}")
+        return []
+
+    async def register_in_nanda(self) -> dict:
+        """Register this agent's capabilities in the NANDA registry."""
+        capabilities = ["parcel_management", "usdx_payments"]
+        if "maximize_community_engagement" in self.goals:
+            capabilities.append("community_engagement")
+
+        self.logger.info(f"Registering in NANDA with capabilities: {capabilities}")
+        return await self.mcp.call_tool(
+            "nanda_register_agent",
+            agent_id=self.parcel_id,
+            capabilities=capabilities,
+            owner_address=self.owner_address,
+            metadata=self.state.metadata,
+        )
+
     async def perform_autonomous_actions(self) -> None:
         """Execute autonomous logic based on current goals."""
+        # 1. Goal: minimize_utility_risk
+        if "minimize_utility_risk" in self.goals:
+            try:
+                risk = await self.mcp.call_tool("spatial_get_utility_risk", parcel_id=self.parcel_id)
+                if risk.get("success"):
+                    self.update_metadata("utility_risk", risk["data"].get("risk_level", "unknown"))
+            except Exception as e:
+                self.logger.error(f"Failed to fetch utility risk: {e}")
+
+        # 2. Goal: maximize_community_engagement
         if "maximize_community_engagement" in self.goals:
+            # 2a. Discovery neighbors
             neighbors = await self.discover_neighbors()
+
+            # 2b. Discovery Stikk spots
+            try:
+                spots = await self.mcp.call_tool(
+                    "spatial_get_stikk_spots",
+                    lat=self.location["lat"],
+                    lon=self.location["lng"],
+                )
+                if spots.get("success") and spots["data"]:
+                    self.update_metadata("nearby_stikk_count", len(spots["data"]))
+            except Exception as e:
+                self.logger.error(f"Failed to fetch Stikk spots: {e}")
+
             for neighbor_id in neighbors:
                 self.logger.info(f"Proposing check-in incentive contract to {neighbor_id}")
-                await self.send_message(
-                    neighbor_id,
-                    {
-                        "type": "contract_offer",
-                        "contract": {
-                            "type": "check_in_incentive",
-                            "rate_usdx": 0.5,
-                            "max_total": 50.0,
-                            "purpose": "Increase cross-parcel foot traffic",
-                        },
-                    },
+                # We use the new incentive specialized trade_type
+                await self.trade(
+                    counterparty_id=neighbor_id,
+                    amount_usdx=0.5,
+                    trade_type="incentive:check_in",
+                    contract_terms={"purpose": "community_growth"},
                 )
 
     # ── Trading (Refined Interoperability) ────────────────────────────────────
@@ -193,6 +239,12 @@ class ParcelAgent:
             if result.get("success"):
                 self.state.balance_usdx -= amount_usdx
                 self.logger.info(f"Trade successful. New balance: {self.state.balance_usdx}")
+
+                # Update counterparty balance if they are in the same OS process
+                from src.main import PARCEL_AGENTS
+
+                if counterparty_id in PARCEL_AGENTS:
+                    PARCEL_AGENTS[counterparty_id].state.balance_usdx += amount_usdx
 
                 # Notify counterparty via MCP message
                 await self.send_message(
