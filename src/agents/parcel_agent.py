@@ -241,7 +241,7 @@ class ParcelAgent:
                 self.logger.info(f"Trade successful. New balance: {self.state.balance_usdx}")
 
                 # Update counterparty balance if they are in the same OS process
-                from src.main import PARCEL_AGENTS
+                from src.core.state import PARCEL_AGENTS
 
                 if counterparty_id in PARCEL_AGENTS:
                     PARCEL_AGENTS[counterparty_id].state.balance_usdx += amount_usdx

@@ -11,7 +11,7 @@ router = APIRouter()
 async def list_tools(agent_id: str = "default"):
     """List available MCP tools for an agent."""
     from src.agents.parcel_agent import ParcelAgent
-    from src.main import PARCEL_AGENTS
+    from src.core.state import PARCEL_AGENTS
 
     if agent_id in PARCEL_AGENTS:
         agent = PARCEL_AGENTS[agent_id]
@@ -27,7 +27,7 @@ async def list_tools(agent_id: str = "default"):
 async def call_tool(request: MCPToolCall, agent_id: str = "default"):
     """Execute an MCP tool call."""
     from src.agents.parcel_agent import ParcelAgent
-    from src.main import PARCEL_AGENTS
+    from src.core.state import PARCEL_AGENTS
 
     if agent_id in PARCEL_AGENTS:
         agent = PARCEL_AGENTS[agent_id]

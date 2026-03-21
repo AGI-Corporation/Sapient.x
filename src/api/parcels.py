@@ -21,7 +21,7 @@ router = APIRouter()
 @router.post("/", response_model=ParcelRead, status_code=201)
 async def create_parcel(parcel: ParcelCreate):
     """Register a new parcel agent."""
-    from src.main import PARCEL_AGENTS
+    from src.core.state import PARCEL_AGENTS
 
     parcel_id = f"parcel-{uuid.uuid4().hex[:8]}"
 
@@ -49,7 +49,7 @@ async def create_parcel(parcel: ParcelCreate):
 @router.get("/{parcel_id}", response_model=ParcelRead)
 async def get_parcel(parcel_id: str):
     """Retrieve parcel agent state."""
-    from src.main import PARCEL_AGENTS
+    from src.core.state import PARCEL_AGENTS
 
     if parcel_id not in PARCEL_AGENTS:
         raise HTTPException(status_code=404, detail="Parcel agent not found")
@@ -71,7 +71,7 @@ async def get_parcel(parcel_id: str):
 @router.patch("/{parcel_id}", response_model=ParcelRead)
 async def update_parcel(parcel_id: str, update: ParcelUpdate):
     """Update parcel metadata or status."""
-    from src.main import PARCEL_AGENTS
+    from src.core.state import PARCEL_AGENTS
 
     if parcel_id not in PARCEL_AGENTS:
         raise HTTPException(status_code=404, detail="Parcel agent not found")
@@ -100,7 +100,7 @@ async def update_parcel(parcel_id: str, update: ParcelUpdate):
 @router.post("/optimize", response_model=OptimizeResponse)
 async def trigger_optimization(request: OptimizeRequest):
     """Run LangGraph optimization for a parcel."""
-    from src.main import PARCEL_AGENTS
+    from src.core.state import PARCEL_AGENTS
 
     if request.parcel_id not in PARCEL_AGENTS:
         raise HTTPException(status_code=404, detail="Parcel agent not found")
@@ -122,7 +122,7 @@ async def trigger_optimization(request: OptimizeRequest):
 @router.delete("/{parcel_id}", response_model=SuccessResponse)
 async def delete_parcel(parcel_id: str):
     """Deactivate and remove a parcel agent."""
-    from src.main import PARCEL_AGENTS
+    from src.core.state import PARCEL_AGENTS
 
     if parcel_id not in PARCEL_AGENTS:
         raise HTTPException(status_code=404, detail="Parcel agent not found")

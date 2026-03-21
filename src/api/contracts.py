@@ -10,7 +10,7 @@ router = APIRouter()
 @router.post("/", response_model=ContractResponse)
 async def propose_contract(request: ContractRequest):
     """Propose a new contract between two agents."""
-    from src.main import PARCEL_AGENTS
+    from src.core.state import PARCEL_AGENTS
 
     if request.party_a not in PARCEL_AGENTS:
         raise HTTPException(status_code=404, detail=f"Agent {request.party_a} not found")
@@ -35,7 +35,7 @@ async def propose_contract(request: ContractRequest):
 @router.post("/{contract_id}/sign", response_model=SuccessResponse)
 async def sign_contract(contract_id: str, agent_id: str):
     """Sign an existing contract."""
-    from src.main import PARCEL_AGENTS
+    from src.core.state import PARCEL_AGENTS
 
     if agent_id not in PARCEL_AGENTS:
         raise HTTPException(status_code=404, detail="Agent not found")

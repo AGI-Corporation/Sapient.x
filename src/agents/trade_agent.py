@@ -76,9 +76,12 @@ class TradeAgent:
         self.logger.info(f"Created trade offer {offer_id} for asset {asset}")
         return offer
 
-    async def broadcast_offer(self, offer_id: str, target_agents: list[str] | None = None) -> list[dict]:
+    async def broadcast_offer(
+        self, offer_id: str, target_agents: list[str] | None = None
+    ) -> list[dict]:
         """Broadcast an active offer to multiple agents via MCP.
         If target_agents is None, discovers them via NANDA for matching asset/trade types.
+        Uses asyncio.gather (per D-02) for parallel message delivery.
         """
         offer = self.offers.get(offer_id)
         if not offer:
@@ -103,16 +106,22 @@ class TradeAgent:
             return []
 
         self.logger.info(f"Broadcasting offer {offer_id} to {len(target_agents)} agents")
-        return await self.mcp.broadcast(
-            target_ids=target_agents,
-            content={
-                "type": "trade_offer_announcement",
-                "offer_id": offer.offer_id,
-                "asset": offer.asset,
-                "min_amount": offer.amount_usdx,
-                "expires_at": offer.expires_at,
-            },
-        )
+
+        # Per D-02: Parallelize delivery
+        tasks = [
+            self.mcp.send_message(
+                target_id=tid,
+                content={
+                    "type": "trade_offer_announcement",
+                    "offer_id": offer.offer_id,
+                    "asset": offer.asset,
+                    "min_amount": offer.amount_usdx,
+                    "expires_at": offer.expires_at,
+                },
+            )
+            for tid in target_agents
+        ]
+        return await asyncio.gather(*tasks)
 
     def place_bid(self, offer_id: str, bidder_id: str, bid_amount: float) -> dict:
         offer = self.offers.get(offer_id)

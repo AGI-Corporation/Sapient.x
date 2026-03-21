@@ -17,7 +17,7 @@ router = APIRouter()
 @router.post("/offers", status_code=201)
 async def create_offer(offer: OfferCreate):
     """Create a new trade offer via TradeAgent."""
-    from src.main import PARCEL_AGENTS, TRADE_AGENTS
+    from src.core.state import PARCEL_AGENTS, TRADE_AGENTS
 
     if offer.seller_parcel_id not in PARCEL_AGENTS:
         raise HTTPException(status_code=404, detail="Seller parcel agent not found")
@@ -46,7 +46,7 @@ async def create_offer(offer: OfferCreate):
 @router.post("/bids")
 async def place_bid(bid: BidRequest):
     """Place a bid on an active offer."""
-    from src.main import PARCEL_AGENTS, TRADE_AGENTS
+    from src.core.state import PARCEL_AGENTS, TRADE_AGENTS
 
     if bid.bidder_parcel_id not in PARCEL_AGENTS:
         raise HTTPException(status_code=404, detail="Bidder parcel agent not found")
@@ -68,7 +68,7 @@ async def place_bid(bid: BidRequest):
 @router.post("/close/{offer_id}")
 async def close_offer(offer_id: str):
     """Close an offer and select winner."""
-    from src.main import TRADE_AGENTS
+    from src.core.state import TRADE_AGENTS
 
     trade_agent = TRADE_AGENTS.get("global")
     if not trade_agent:
@@ -84,7 +84,7 @@ async def close_offer(offer_id: str):
 @router.post("/settle/{offer_id}")
 async def settle_trade(offer_id: str):
     """Execute settlement for a closed trade."""
-    from src.main import TRADE_AGENTS
+    from src.core.state import TRADE_AGENTS
 
     trade_agent = TRADE_AGENTS.get("global")
     if not trade_agent:
@@ -100,7 +100,7 @@ async def settle_trade(offer_id: str):
 @router.post("/incentive", response_model=SuccessResponse)
 async def execute_incentive(request: IncentiveRequest):
     """Execute a USDx incentive payment (e.g., for loyalty or community check-in)."""
-    from src.main import PARCEL_AGENTS
+    from src.core.state import PARCEL_AGENTS
 
     if request.parcel_id not in PARCEL_AGENTS:
         raise HTTPException(status_code=404, detail="Sponsoring parcel agent not found")
@@ -124,7 +124,7 @@ async def execute_incentive(request: IncentiveRequest):
 @router.post("/direct", response_model=SuccessResponse)
 async def direct_trade(request: TradeRequest):
     """Execute a direct trade between two parcels."""
-    from src.main import PARCEL_AGENTS
+    from src.core.state import PARCEL_AGENTS
 
     if request.from_parcel_id not in PARCEL_AGENTS:
         raise HTTPException(status_code=404, detail="Sender parcel not found")

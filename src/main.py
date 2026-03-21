@@ -5,18 +5,16 @@ Run with: uvicorn src.main:app --reload
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from src import __version__
 
 # ── Global state ──────────────────────────────────────────────────────────────
-from src.agents.parcel_agent import ParcelAgent
-from src.agents.trade_agent import TradeAgent
 from src.api import contracts, mcp, parcels, payments, registry, trades
-
-PARCEL_AGENTS: dict[str, ParcelAgent] = {}  # parcel_id -> ParcelAgent instance
-TRADE_AGENTS: dict[str, TradeAgent] = {}  # agent_id -> TradeAgent instance
+from src.core.state import PARCEL_AGENTS, TRADE_AGENTS
+from src.models.parcel_models import ErrorResponse
 
 
 @asynccontextmanager
@@ -113,6 +111,30 @@ async def system_map():
         )
 
     return {"type": "FeatureCollection", "features": features}
+
+
+# ── Exception Handling (Standardized per D-01) ────────────────────────────────
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Global handler to return standardized ErrorResponse for all unhandled exceptions."""
+    import traceback
+
+    error_msg = str(exc)
+    detail = traceback.format_exc() if app.debug else None
+
+    # Determine status code
+    status_code = 500
+    if hasattr(exc, "status_code"):
+        status_code = exc.status_code
+
+    return JSONResponse(
+        status_code=status_code,
+        content=ErrorResponse(
+            success=False, error=error_msg, detail=detail
+        ).model_dump(),
+    )
 
 
 # ── Health check ──────────────────────────────────────────────────────────────

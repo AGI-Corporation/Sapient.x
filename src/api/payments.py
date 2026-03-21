@@ -10,7 +10,7 @@ router = APIRouter()
 @router.get("/balance/{parcel_id}")
 async def get_balance(parcel_id: str):
     """Get the USDx balance for a parcel agent."""
-    from src.main import PARCEL_AGENTS
+    from src.core.state import PARCEL_AGENTS
 
     if parcel_id not in PARCEL_AGENTS:
         raise HTTPException(status_code=404, detail="Parcel agent not found")
@@ -26,7 +26,7 @@ async def get_balance(parcel_id: str):
 @router.post("/deposit", response_model=SuccessResponse)
 async def deposit(request: DepositRequest):
     """Deposit USDx into a parcel wallet."""
-    from src.main import PARCEL_AGENTS
+    from src.core.state import PARCEL_AGENTS
 
     if request.parcel_id not in PARCEL_AGENTS:
         raise HTTPException(status_code=404, detail="Parcel agent not found")
@@ -43,7 +43,7 @@ async def deposit(request: DepositRequest):
 @router.post("/transfer", response_model=SuccessResponse)
 async def transfer(request: TradeRequest):
     """Transfer USDx between parcel agents."""
-    from src.main import PARCEL_AGENTS
+    from src.core.state import PARCEL_AGENTS
 
     if request.from_parcel_id not in PARCEL_AGENTS:
         raise HTTPException(status_code=404, detail="Sender parcel not found")
