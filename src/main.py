@@ -89,6 +89,39 @@ async def system_status():
     }
 
 
+@app.get("/api/v1/system/about")
+async def system_about():
+    """Retrieve comprehensive metadata about the Sapient.x OS."""
+    import os
+
+    from src.core.state import PARCEL_AGENTS, TRADE_AGENTS
+
+    # Attempt to read active milestone from ROADMAP.md
+    milestone = "Milestone 2: Spatial & Financial Interoperability"
+    roadmap_path = ".planning/ROADMAP.md"
+    if os.path.exists(roadmap_path):
+        with open(roadmap_path) as f:
+            for line in f:
+                if line.startswith("## Milestone") and "(In Progress)" in line:
+                    milestone = line.strip("## ").strip()
+                    break
+
+    return {
+        "os_name": "Sapient.x",
+        "version": __version__,
+        "active_milestone": milestone,
+        "protocols": {
+            "mcp": {"version": "1.0", "status": "active"},
+            "x402": {"version": "1.0", "status": "active"},
+            "nanda": {"version": "0.1", "status": "beta"},
+        },
+        "statistics": {
+            "active_parcels": len(PARCEL_AGENTS),
+            "active_trade_agents": len(TRADE_AGENTS),
+        },
+    }
+
+
 @app.get("/api/v1/system/map")
 async def system_map():
     """Return GeoJSON of all active parcel agents."""

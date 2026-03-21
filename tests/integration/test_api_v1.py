@@ -130,6 +130,14 @@ def test_system_visibility(client):
     geojson = response.json()
     assert geojson["type"] == "FeatureCollection"
 
+    # 3. About
+    response = client.get("/api/v1/system/about")
+    assert response.status_code == 200
+    about = response.json()
+    assert about["os_name"] == "Sapient.x"
+    assert "protocols" in about
+    assert "milestone" in about["active_milestone"].lower()
+
 
 def test_nanda_registry_flow(client):
     """Test registering and discovering agents in NANDA registry."""

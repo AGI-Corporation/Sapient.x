@@ -5,9 +5,28 @@ All request/response bodies are validated here.
 
 from __future__ import annotations
 
+import uuid
+from datetime import datetime, timezone
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
+
+# ── Metadata ──────────────────────────────────────────────────────────────
+
+
+class ResponseMetadata(BaseModel):
+    """Standard Sapient.x response metadata for observability."""
+
+    timestamp: str = Field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat(),
+        description="The UTC ISO8601 timestamp of the response",
+    )
+    trace_id: str = Field(
+        default_factory=lambda: str(uuid.uuid4()),
+        description="A unique identifier for this response (Request/Response correlation)",
+    )
+    version: str = Field("1.0.0", description="The current OS version")
+
 
 # ── Location ───────────────────────────────────────────────────────────────
 
@@ -42,6 +61,7 @@ class ParcelRead(BaseModel):
     metadata: dict[str, Any]
     active: bool
     last_updated: str
+    meta: ResponseMetadata = Field(default_factory=ResponseMetadata)
 
 
 class ParcelUpdate(BaseModel):
@@ -67,6 +87,7 @@ class TradeResponse(BaseModel):
     from_parcel_id: str
     to_parcel_id: str
     error: str | None = None
+    meta: ResponseMetadata = Field(default_factory=ResponseMetadata)
 
 
 class OfferCreate(BaseModel):
@@ -100,6 +121,7 @@ class ContractResponse(BaseModel):
     terms: dict[str, Any]
     created_at: str
     tx_hash: str | None = None
+    meta: ResponseMetadata = Field(default_factory=ResponseMetadata)
 
 
 # ── Optimization ────────────────────────────────────────────────────────────
@@ -118,6 +140,7 @@ class OptimizeResponse(BaseModel):
     actions_taken: list[dict[str, Any]] = []
     reflection: str | None = None
     score: float = 0.0
+    meta: ResponseMetadata = Field(default_factory=ResponseMetadata)
 
 
 # ── Payments ──────────────────────────────────────────────────────────────
@@ -174,18 +197,29 @@ class RegistryResponse(BaseModel):
     success: bool
     message: str
     agent: AgentFact | None = None
+    meta: ResponseMetadata = Field(default_factory=ResponseMetadata)
 
 
 # ── Generic responses ───────────────────────────────────────────────────────
 
 
 class SuccessResponse(BaseModel):
-    success: bool = True
-    message: str = "OK"
-    data: Any | None = None
+    """Successful operation result with standard metadata."""
+
+    success: bool = Field(True, description="Indicates if the operation was successful")
+    message: str = Field("OK", description="A human-readable success message")
+    data: Any | None = Field(None, description="The payload of the response")
+    meta: ResponseMetadata = Field(
+        default_factory=ResponseMetadata, description="Observability metadata"
+    )
 
 
 class ErrorResponse(BaseModel):
-    success: bool = False
-    error: str
-    detail: str | None = None
+    """Standard error response for failed operations."""
+
+    success: bool = Field(False, description="Always false for error responses")
+    error: str = Field(..., description="The error category or message")
+    detail: str | None = Field(None, description="Detailed trace or diagnostic information")
+    meta: ResponseMetadata = Field(
+        default_factory=ResponseMetadata, description="Observability metadata"
+    )
