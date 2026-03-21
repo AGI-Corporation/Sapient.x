@@ -9,9 +9,9 @@ const MCP_TOOLS_ENDPOINT = "https://mcp.agi-corp.com/v1/tools";
 
 router.post("/route", async (req, res) => {
   const { parcel_id, destination, intent } = req.body;
-  
+
   console.log(`[Route.X] Routing request from ${parcel_id} to ${destination} with intent: ${intent}`);
-  
+
   // Logic to determine which MCP tool to plug in
   let recommended_tool = "spatial_query";
   if (intent.includes("trade") || intent.includes("pay")) {

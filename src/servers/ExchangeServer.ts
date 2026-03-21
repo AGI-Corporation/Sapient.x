@@ -22,7 +22,7 @@ const trades: Record<string, Trade> = {};
 app.post("/exchange/trade", (req, res) => {
   const { sender, receiver, amount, asset = "USDx" } = req.body;
   const tradeId = `tx_${Date.now()}`;
-  
+
   const newTrade: Trade = {
     id: tradeId,
     sender_parcel: sender,
@@ -33,12 +33,12 @@ app.post("/exchange/trade", (req, res) => {
     protocol: "x402",
     timestamp: new Date().toISOString()
   };
-  
+
   trades[tradeId] = newTrade;
-  
+
   // Simulate x402 protocol handshake
   console.log(`[UEA] Initiating x402 trade ${tradeId} between ${sender} and ${receiver}`);
-  
+
   setTimeout(() => {
     trades[tradeId].status = "completed";
     console.log(`[UEA] Trade ${tradeId} completed successfully.`);

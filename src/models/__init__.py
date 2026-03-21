@@ -1,12 +1,12 @@
 """Web4AGI Pydantic models / schemas."""
 
 from src.models.parcel_models import (
-    ParcelCreate,
-    ParcelRead,
-    TradeRequest,
     ContractRequest,
     OptimizeRequest,
+    ParcelCreate,
+    ParcelRead,
     PaymentStreamRequest,
+    TradeRequest,
 )
 
 __all__ = [
