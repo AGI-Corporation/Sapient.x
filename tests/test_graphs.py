@@ -1,306 +1,365 @@
-"""Tests for LangGraph workflow optimization for parcel agents."""
+"""Tests for the LangGraph optimization workflow (langgraph_workflow.py)."""
 
 import pytest
-from unittest.mock import Mock, AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, patch, MagicMock
+
 from src.graphs.langgraph_workflow import (
-    ParcelOptimizationWorkflow,
-    WorkflowState,
-    optimize_parcel_strategy
+    ParcelOptState,
+    assess_node,
+    plan_node,
+    execute_node,
+    reflect_node,
+    should_continue,
+    build_optimization_graph,
+    run_parcel_optimization,
+    LANGGRAPH_AVAILABLE,
 )
 
 
-# ── Workflow Tests ───────────────────────────────────────────────────────────
+# ── Helpers ────────────────────────────────────────────────────────────────────
 
-def test_workflow_state_creation():
-    """Test WorkflowState initialization."""
-    state = WorkflowState(
-        parcel_id="test-001",
-        context={"market": "bullish"},
-        current_step="analyze"
-    )
-    
-    assert state.parcel_id == "test-001"
-    assert state.context["market"] == "bullish"
-    assert state.current_step == "analyze"
-    assert state.strategies == []
-
-
-def test_workflow_creation():
-    """Test ParcelOptimizationWorkflow initialization."""
-    workflow = ParcelOptimizationWorkflow(
-        parcel_id="test-001",
-        model="gpt-4"
-    )
-    
-    assert workflow.parcel_id == "test-001"
-    assert workflow.model == "gpt-4"
-    assert workflow.graph is not None
-
-
-@pytest.mark.asyncio
-async def test_workflow_analyze_step():
-    """Test the analyze step of the workflow."""
-    workflow = ParcelOptimizationWorkflow(
-        parcel_id="test-001",
-        model="gpt-4"
-    )
-    
-    state = WorkflowState(
-        parcel_id="test-001",
-        context={"balance": 100.0, "market": "bullish"},
-        current_step="analyze"
-    )
-    
-    with patch.object(workflow, '_call_llm', new_callable=AsyncMock) as mock_llm:
-        mock_llm.return_value = {"assessment": "positive", "risk": "low"}
-        
-        result = await workflow.analyze(state)
-        assert "assessment" in result
-        assert result["assessment"] == "positive"
-
-
-@pytest.mark.asyncio
-async def test_workflow_generate_strategies():
-    """Test strategy generation step."""
-    workflow = ParcelOptimizationWorkflow(
-        parcel_id="test-001",
-        model="gpt-4"
-    )
-    
-    state = WorkflowState(
-        parcel_id="test-001",
-        context={"market": "bullish", "balance": 100.0},
-        current_step="generate_strategies",
-        analysis={"assessment": "positive"}
-    )
-    
-    with patch.object(workflow, '_call_llm', new_callable=AsyncMock) as mock_llm:
-        mock_llm.return_value = [
-            {"type": "trade", "action": "buy", "amount": 50.0},
-            {"type": "lease", "action": "offer", "price": 25.0}
-        ]
-        
-        strategies = await workflow.generate_strategies(state)
-        assert len(strategies) == 2
-        assert strategies[0]["type"] == "trade"
-        assert strategies[1]["type"] == "lease"
-
-
-@pytest.mark.asyncio
-async def test_workflow_evaluate_strategies():
-    """Test strategy evaluation step."""
-    workflow = ParcelOptimizationWorkflow(
-        parcel_id="test-001",
-        model="gpt-4"
-    )
-    
-    strategies = [
-        {"type": "trade", "action": "buy", "amount": 50.0, "risk": "medium"},
-        {"type": "lease", "action": "offer", "price": 25.0, "risk": "low"}
-    ]
-    
-    state = WorkflowState(
-        parcel_id="test-001",
-        context={},
-        current_step="evaluate",
-        strategies=strategies
-    )
-    
-    evaluated = await workflow.evaluate_strategies(state)
-    assert len(evaluated) > 0
-    assert all("score" in s for s in evaluated)
-
-
-@pytest.mark.asyncio
-async def test_workflow_select_best_strategy():
-    """Test selecting the best strategy."""
-    workflow = ParcelOptimizationWorkflow(
-        parcel_id="test-001",
-        model="gpt-4"
-    )
-    
-    strategies = [
-        {"type": "trade", "score": 0.85, "risk": "medium"},
-        {"type": "lease", "score": 0.92, "risk": "low"},
-        {"type": "invest", "score": 0.78, "risk": "high"}
-    ]
-    
-    state = WorkflowState(
-        parcel_id="test-001",
-        context={},
-        current_step="select",
-        strategies=strategies
-    )
-    
-    best = await workflow.select_best_strategy(state)
-    assert best["type"] == "lease"
-    assert best["score"] == 0.92
-
-
-@pytest.mark.asyncio
-async def test_workflow_full_execution(sample_parcel_state):
-    """Test complete workflow execution end-to-end."""
-    workflow = ParcelOptimizationWorkflow(
-        parcel_id="test-001",
-        model="gpt-4"
-    )
-    
-    with patch.object(workflow, '_call_llm', new_callable=AsyncMock) as mock_llm:
-        # Mock different responses for different steps
-        mock_llm.side_effect = [
-            {"assessment": "positive", "risk": "low"},
-            [{"type": "trade", "action": "buy", "amount": 50.0}],
-            {"score": 0.85}
-        ]
-        
-        result = await workflow.run(sample_parcel_state)
-        
-        assert "assessment" in result
-        assert "strategies" in result
-        assert "best_strategy" in result
-
-
-@pytest.mark.asyncio
-async def test_optimize_parcel_strategy_function(parcel_agent):
-    """Test the main optimization function."""
-    context = {
-        "balance": 100.0,
-        "market": "bullish",
-        "location": {"lat": 37.7749, "lng": -122.4194}
+def _base_state(balance: float = 100.0) -> ParcelOptState:
+    return {
+        "parcel_state": {
+            "parcel_id": "test-parcel-001",
+            "owner": "0xOwner",
+            "location": {"lat": 37.7749, "lng": -122.4194, "alt": 0.0},
+            "balance_usdx": balance,
+            "metadata": {},
+            "active": True,
+            "last_updated": "2026-01-01T00:00:00",
+        },
+        "context": {},
+        "assessment": None,
+        "strategies": [],
+        "chosen_strategy": None,
+        "actions_taken": [],
+        "reflection": None,
+        "score": 0.0,
+        "iteration": 0,
     }
-    
-    with patch('src.graphs.langgraph_workflow.ParcelOptimizationWorkflow') as MockWorkflow:
-        mock_instance = MockWorkflow.return_value
-        mock_instance.run = AsyncMock(return_value={
-            "assessment": "positive",
-            "strategies": [{"type": "trade"}],
-            "best_strategy": {"type": "trade", "score": 0.9}
-        })
-        
-        result = await optimize_parcel_strategy(
-            parcel_id="test-001",
-            context=context
+
+
+# ── assess_node Tests ──────────────────────────────────────────────────────────
+
+def test_assess_node_fallback_no_llm():
+    """assess_node produces a heuristic assessment when no LLM is configured."""
+    state = _base_state()
+    with patch("src.graphs.langgraph_workflow._get_llm", return_value=None):
+        result = assess_node(state)
+    assert result["assessment"] is not None
+    assert "100.00 USDx" in result["assessment"]
+
+
+def test_assess_node_with_llm():
+    """assess_node uses LLM when one is configured."""
+    state = _base_state()
+    mock_llm = MagicMock()
+    mock_llm.invoke.return_value = MagicMock(content="Parcel looks promising.")
+    with patch("src.graphs.langgraph_workflow._get_llm", return_value=mock_llm):
+        result = assess_node(state)
+    assert result["assessment"] == "Parcel looks promising."
+    mock_llm.invoke.assert_called_once()
+
+
+def test_assess_node_preserves_other_state_keys():
+    """assess_node does not discard unrelated state keys."""
+    state = _base_state()
+    state["score"] = 0.42
+    with patch("src.graphs.langgraph_workflow._get_llm", return_value=None):
+        result = assess_node(state)
+    assert result["score"] == 0.42
+
+
+def test_assess_node_zero_balance():
+    """assess_node handles zero-balance parcel correctly."""
+    state = _base_state(balance=0.0)
+    with patch("src.graphs.langgraph_workflow._get_llm", return_value=None):
+        result = assess_node(state)
+    assert "0.00 USDx" in result["assessment"]
+
+
+# ── plan_node Tests ────────────────────────────────────────────────────────────
+
+def test_plan_node_fallback_no_llm():
+    """plan_node generates heuristic strategies when no LLM configured."""
+    state = _base_state()
+    state["assessment"] = "Balance looks healthy."
+    with patch("src.graphs.langgraph_workflow._get_llm", return_value=None):
+        result = plan_node(state)
+    assert len(result["strategies"]) == 3
+    assert all(isinstance(s, str) for s in result["strategies"])
+
+
+def test_plan_node_with_llm():
+    """plan_node parses numbered list from LLM response."""
+    state = _base_state()
+    state["assessment"] = "Assessment text."
+    mock_llm = MagicMock()
+    mock_llm.invoke.return_value = MagicMock(
+        content="1. Trade 10 USDx\n2. Lease parcel\n3. Update metadata"
+    )
+    with patch("src.graphs.langgraph_workflow._get_llm", return_value=mock_llm):
+        result = plan_node(state)
+    assert len(result["strategies"]) == 3
+    assert "Trade 10 USDx" in result["strategies"][0]
+
+
+def test_plan_node_with_llm_no_numbered_lines():
+    """plan_node falls back to raw content when LLM returns no numbered lines."""
+    state = _base_state()
+    state["assessment"] = "A"
+    mock_llm = MagicMock()
+    mock_llm.invoke.return_value = MagicMock(content="Just do something useful.")
+    with patch("src.graphs.langgraph_workflow._get_llm", return_value=mock_llm):
+        result = plan_node(state)
+    assert result["strategies"] == ["Just do something useful."]
+
+
+def test_plan_node_includes_balance_in_fallback_strategy():
+    """plan_node fallback strategy references the parcel's actual balance."""
+    state = _base_state(balance=200.0)
+    state["assessment"] = "Fine."
+    with patch("src.graphs.langgraph_workflow._get_llm", return_value=None):
+        result = plan_node(state)
+    # First heuristic strategy includes 10% of balance = 20.0
+    assert "20.00" in result["strategies"][0]
+
+
+# ── execute_node Tests ─────────────────────────────────────────────────────────
+
+def test_execute_node_picks_first_strategy():
+    """execute_node selects the first strategy and records an action."""
+    state = _base_state()
+    state["strategies"] = ["Strategy A", "Strategy B"]
+    result = execute_node(state)
+    assert result["chosen_strategy"] == "Strategy A"
+    assert len(result["actions_taken"]) == 1
+    assert result["actions_taken"][0]["strategy"] == "Strategy A"
+    assert result["actions_taken"][0]["status"] == "simulated"
+
+
+def test_execute_node_no_strategies():
+    """execute_node records 'No strategy available' when strategies is empty."""
+    state = _base_state()
+    state["strategies"] = []
+    result = execute_node(state)
+    assert result["chosen_strategy"] == "No strategy available"
+    assert len(result["actions_taken"]) == 1
+
+
+def test_execute_node_appends_to_existing_actions():
+    """execute_node accumulates actions across iterations."""
+    state = _base_state()
+    state["strategies"] = ["New strategy"]
+    state["actions_taken"] = [{"strategy": "Old strategy", "status": "simulated"}]
+    result = execute_node(state)
+    assert len(result["actions_taken"]) == 2
+
+
+def test_execute_node_action_has_timestamp():
+    """execute_node action dict contains an executed_at timestamp."""
+    state = _base_state()
+    state["strategies"] = ["Do something"]
+    result = execute_node(state)
+    assert "executed_at" in result["actions_taken"][0]
+
+
+# ── reflect_node Tests ─────────────────────────────────────────────────────────
+
+def test_reflect_node_fallback_with_strategy():
+    """reflect_node scores 0.7 when a strategy was chosen (no LLM)."""
+    state = _base_state()
+    state["chosen_strategy"] = "Trade 10 USDx"
+    state["actions_taken"] = [{"strategy": "Trade 10 USDx", "status": "simulated"}]
+    with patch("src.graphs.langgraph_workflow._get_llm", return_value=None):
+        result = reflect_node(state)
+    assert result["score"] == 0.7
+    assert result["reflection"] is not None
+
+
+def test_reflect_node_fallback_no_strategy():
+    """reflect_node scores 0.3 when no strategy was chosen."""
+    state = _base_state()
+    state["chosen_strategy"] = None
+    state["actions_taken"] = []
+    with patch("src.graphs.langgraph_workflow._get_llm", return_value=None):
+        result = reflect_node(state)
+    assert result["score"] == 0.3
+
+
+def test_reflect_node_with_llm_parses_score():
+    """reflect_node extracts score from LLM response format."""
+    state = _base_state()
+    state["chosen_strategy"] = "Trade"
+    state["actions_taken"] = []
+    mock_llm = MagicMock()
+    mock_llm.invoke.return_value = MagicMock(
+        content="SCORE: 0.9 | REFLECTION: Great outcome achieved."
+    )
+    with patch("src.graphs.langgraph_workflow._get_llm", return_value=mock_llm):
+        result = reflect_node(state)
+    assert result["score"] == pytest.approx(0.9)
+    assert result["reflection"] == "Great outcome achieved."
+
+
+def test_reflect_node_with_llm_invalid_score():
+    """reflect_node falls back to 0.5 when SCORE parsing fails."""
+    state = _base_state()
+    state["chosen_strategy"] = "Trade"
+    state["actions_taken"] = []
+    mock_llm = MagicMock()
+    mock_llm.invoke.return_value = MagicMock(content="SCORE: not_a_number | REFLECTION: text")
+    with patch("src.graphs.langgraph_workflow._get_llm", return_value=mock_llm):
+        result = reflect_node(state)
+    assert result["score"] == 0.5
+
+
+def test_reflect_node_reflection_includes_iteration():
+    """reflect_node fallback reflection mentions the iteration count."""
+    state = _base_state()
+    state["chosen_strategy"] = "S"
+    state["actions_taken"] = []
+    state["iteration"] = 2
+    with patch("src.graphs.langgraph_workflow._get_llm", return_value=None):
+        result = reflect_node(state)
+    assert "2" in result["reflection"]
+
+
+# ── should_continue Tests ──────────────────────────────────────────────────────
+
+def test_should_continue_high_score_stops():
+    """should_continue returns END when score >= 0.8."""
+    from src.graphs.langgraph_workflow import END
+
+    state = _base_state()
+    state["score"] = 0.85
+    state["iteration"] = 1
+    assert should_continue(state) == END
+
+
+def test_should_continue_exact_threshold_stops():
+    """should_continue returns END when score exactly equals 0.8."""
+    from src.graphs.langgraph_workflow import END
+
+    state = _base_state()
+    state["score"] = 0.8
+    state["iteration"] = 1
+    assert should_continue(state) == END
+
+
+def test_should_continue_max_iterations_stops():
+    """should_continue returns END when iteration >= 3."""
+    from src.graphs.langgraph_workflow import END
+
+    state = _base_state()
+    state["score"] = 0.2
+    state["iteration"] = 3
+    assert should_continue(state) == END
+
+
+def test_should_continue_low_score_continues():
+    """should_continue returns 'assess' when score is low and iterations remain."""
+    state = _base_state()
+    state["score"] = 0.4
+    state["iteration"] = 1
+    assert should_continue(state) == "assess"
+
+
+def test_should_continue_zero_score_zero_iterations_continues():
+    """should_continue continues from the initial state."""
+    state = _base_state()
+    state["score"] = 0.0
+    state["iteration"] = 0
+    assert should_continue(state) == "assess"
+
+
+# ── build_optimization_graph Tests ────────────────────────────────────────────
+
+@pytest.mark.skipif(not LANGGRAPH_AVAILABLE, reason="LangGraph not installed")
+def test_build_optimization_graph_returns_compiled():
+    """build_optimization_graph returns a compiled graph when LangGraph available."""
+    graph = build_optimization_graph()
+    assert graph is not None
+
+
+def test_build_optimization_graph_without_langgraph():
+    """build_optimization_graph returns None when LangGraph is unavailable."""
+    with patch("src.graphs.langgraph_workflow.LANGGRAPH_AVAILABLE", False):
+        graph = build_optimization_graph()
+    assert graph is None
+
+
+# ── run_parcel_optimization Tests ──────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_run_parcel_optimization_fallback(sample_parcel_state):
+    """run_parcel_optimization falls back to direct node calls without LangGraph."""
+    with (
+        patch("src.graphs.langgraph_workflow._get_graph", return_value=None),
+        patch("src.graphs.langgraph_workflow._get_llm", return_value=None),
+    ):
+        result = await run_parcel_optimization(parcel_state=sample_parcel_state)
+
+    assert "assessment" in result
+    assert "strategies" in result
+    assert isinstance(result["strategies"], list)
+    assert "chosen_strategy" in result
+    assert "reflection" in result
+    assert "score" in result
+
+
+@pytest.mark.asyncio
+async def test_run_parcel_optimization_with_context(sample_parcel_state):
+    """run_parcel_optimization accepts and passes through context."""
+    with (
+        patch("src.graphs.langgraph_workflow._get_graph", return_value=None),
+        patch("src.graphs.langgraph_workflow._get_llm", return_value=None),
+    ):
+        result = await run_parcel_optimization(
+            parcel_state=sample_parcel_state,
+            context={"market": "bearish"},
         )
-        
-        assert result["assessment"] == "positive"
-        assert len(result["strategies"]) > 0
-
-
-def test_workflow_state_transitions():
-    """Test workflow state transitions."""
-    workflow = ParcelOptimizationWorkflow(
-        parcel_id="test-001",
-        model="gpt-4"
-    )
-    
-    states = ["analyze", "generate_strategies", "evaluate", "select", "complete"]
-    
-    for i, state in enumerate(states[:-1]):
-        next_state = workflow.next_step(state)
-        assert next_state == states[i + 1]
+    assert result is not None
 
 
 @pytest.mark.asyncio
-async def test_workflow_error_handling():
-    """Test workflow error handling."""
-    workflow = ParcelOptimizationWorkflow(
-        parcel_id="test-001",
-        model="gpt-4"
-    )
-    
-    state = WorkflowState(
-        parcel_id="test-001",
-        context={},
-        current_step="analyze"
-    )
-    
-    with patch.object(workflow, '_call_llm', new_callable=AsyncMock) as mock_llm:
-        mock_llm.side_effect = Exception("LLM API error")
-        
-        result = await workflow.run(state)
-        assert "error" in result
-        assert "LLM API error" in result["error"]
+async def test_run_parcel_optimization_none_context(sample_parcel_state):
+    """run_parcel_optimization handles context=None without error."""
+    with (
+        patch("src.graphs.langgraph_workflow._get_graph", return_value=None),
+        patch("src.graphs.langgraph_workflow._get_llm", return_value=None),
+    ):
+        result = await run_parcel_optimization(parcel_state=sample_parcel_state, context=None)
+    assert result is not None
 
 
 @pytest.mark.asyncio
-async def test_workflow_with_constraints():
-    """Test workflow with budget and risk constraints."""
-    workflow = ParcelOptimizationWorkflow(
-        parcel_id="test-001",
-        model="gpt-4",
-        max_budget=50.0,
-        risk_tolerance="low"
-    )
-    
-    strategies = [
-        {"type": "trade", "amount": 60.0, "risk": "medium"},
-        {"type": "lease", "amount": 40.0, "risk": "low"}
-    ]
-    
-    filtered = workflow.filter_by_constraints(strategies)
-    
-    # Should filter out the trade that exceeds budget
-    assert len(filtered) == 1
-    assert filtered[0]["type"] == "lease"
-
-
-def test_workflow_graph_structure():
-    """Test the LangGraph graph structure."""
-    workflow = ParcelOptimizationWorkflow(
-        parcel_id="test-001",
-        model="gpt-4"
-    )
-    
-    # Verify graph nodes
-    nodes = workflow.graph.get_nodes()
-    assert "analyze" in nodes
-    assert "generate_strategies" in nodes
-    assert "evaluate" in nodes
-    assert "select" in nodes
+async def test_run_parcel_optimization_fallback_produces_score(sample_parcel_state):
+    """run_parcel_optimization fallback path produces a numeric score."""
+    with (
+        patch("src.graphs.langgraph_workflow._get_graph", return_value=None),
+        patch("src.graphs.langgraph_workflow._get_llm", return_value=None),
+    ):
+        result = await run_parcel_optimization(parcel_state=sample_parcel_state)
+    assert isinstance(result["score"], float)
 
 
 @pytest.mark.asyncio
-async def test_workflow_with_memory():
-    """Test workflow with historical memory."""
-    workflow = ParcelOptimizationWorkflow(
-        parcel_id="test-001",
-        model="gpt-4",
-        use_memory=True
-    )
-    
-    # First run
-    state1 = WorkflowState(
-        parcel_id="test-001",
-        context={"market": "bullish"},
-        current_step="analyze"
-    )
-    
-    with patch.object(workflow, '_call_llm', new_callable=AsyncMock) as mock_llm:
-        mock_llm.return_value = {"assessment": "positive"}
-        result1 = await workflow.run(state1)
-    
-    # Second run should access memory
-    assert workflow.memory is not None
-    assert len(workflow.memory.get_history()) > 0
+@pytest.mark.skipif(not LANGGRAPH_AVAILABLE, reason="LangGraph not installed")
+async def test_run_parcel_optimization_with_graph(sample_parcel_state):
+    """run_parcel_optimization uses LangGraph graph when available."""
+    expected = {
+        **_base_state(),
+        "assessment": "Good",
+        "strategies": ["S1"],
+        "score": 0.9,
+    }
+    mock_graph = MagicMock()
+    mock_graph.ainvoke = AsyncMock(return_value=expected)
 
+    with patch("src.graphs.langgraph_workflow._get_graph", return_value=mock_graph):
+        result = await run_parcel_optimization(parcel_state=sample_parcel_state)
 
-@pytest.mark.asyncio
-async def test_multi_objective_optimization():
-    """Test optimization with multiple objectives."""
-    workflow = ParcelOptimizationWorkflow(
-        parcel_id="test-001",
-        model="gpt-4",
-        objectives=["maximize_profit", "minimize_risk", "maximize_liquidity"]
-    )
-    
-    strategies = [
-        {"profit": 100, "risk": 0.8, "liquidity": 0.5},
-        {"profit": 80, "risk": 0.3, "liquidity": 0.9},
-        {"profit": 90, "risk": 0.5, "liquidity": 0.7}
-    ]
-    
-    ranked = workflow.rank_multi_objective(strategies)
-    
-    # Should balance all objectives
-    assert len(ranked) == 3
-    assert all("score" in s for s in ranked)
+    assert result["assessment"] == "Good"
+    mock_graph.ainvoke.assert_called_once()

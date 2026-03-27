@@ -1,154 +1,323 @@
-"""Tests for X402 payment client and wallet operations."""
+"""Tests for X402Client in payments/x402_client.py."""
 
+import hashlib
+import hmac
+import json
 import pytest
-from unittest.mock import Mock, AsyncMock, patch
-from src.payments.x402_client import X402Client
+from unittest.mock import AsyncMock, MagicMock, patch
+
+from src.payments.x402_client import X402Client, _to_micro, make_x402_client
 
 
-# ── X402Client Tests ─────────────────────────────────────────────────────────
+# ── _to_micro Helper ───────────────────────────────────────────────────────────
 
-def test_x402_client_creation(x402_client):
-    """Test X402Client initialization."""
-    assert x402_client is not None
-    assert hasattr(x402_client, 'private_key')
-    
+def test_to_micro_whole_number():
+    assert _to_micro(1.0) == 1_000_000
 
-def test_x402_client_wallet_address(x402_client):
-    """Test wallet address generation."""
-    address = x402_client.get_address()
-    assert address.startswith('0x')
-    assert len(address) == 42  # Ethereum address length
+
+def test_to_micro_fractional():
+    assert _to_micro(0.5) == 500_000
+
+
+def test_to_micro_small_amount():
+    assert _to_micro(0.000001) == 1
+
+
+def test_to_micro_zero():
+    assert _to_micro(0.0) == 0
+
+
+def test_to_micro_large_amount():
+    assert _to_micro(1000.0) == 1_000_000_000
+
+
+# ── X402Client Initialization ─────────────────────────────────────────────────
+
+def test_x402_client_defaults(x402_client):
+    """X402Client stores private_key and gateway_url."""
+    assert x402_client.private_key == "test_key_abc123_do_not_use_in_production"
+    assert x402_client.gateway_url.startswith("https://")
+
+
+def test_x402_client_strips_trailing_slash():
+    """X402Client strips trailing slash from gateway_url."""
+    client = X402Client(private_key="k", gateway_url="https://example.com/api/v1/")
+    assert not client.gateway_url.endswith("/")
+
+
+def test_x402_client_empty_private_key():
+    """X402Client accepts empty private key (for read-only use)."""
+    client = X402Client()
+    assert client.private_key == ""
+
+
+# ── Nonce Generation ──────────────────────────────────────────────────────────
+
+def test_next_nonce_increments(x402_client):
+    """_next_nonce returns monotonically increasing values."""
+    n1 = x402_client._next_nonce()
+    n2 = x402_client._next_nonce()
+    n3 = x402_client._next_nonce()
+    assert n2 == n1 + 1
+    assert n3 == n2 + 1
+
+
+# ── _sign Tests ────────────────────────────────────────────────────────────────
+
+def test_sign_produces_hex_string(x402_client):
+    """_sign returns a 64-character hex string (HMAC-SHA256)."""
+    sig = x402_client._sign({"action": "deposit", "amount": 100})
+    assert isinstance(sig, str)
+    assert len(sig) == 64
+
+
+def test_sign_is_deterministic(x402_client):
+    """_sign produces the same signature for identical payloads."""
+    payload = {"action": "deposit", "amount": 100, "nonce": 1}
+    sig1 = x402_client._sign(payload)
+    sig2 = x402_client._sign(payload)
+    assert sig1 == sig2
+
+
+def test_sign_excludes_signature_key(x402_client):
+    """_sign ignores an existing 'signature' key to avoid circular signing."""
+    payload_without = {"action": "deposit", "nonce": 1}
+    payload_with = {"action": "deposit", "nonce": 1, "signature": "old_sig"}
+    assert x402_client._sign(payload_without) == x402_client._sign(payload_with)
+
+
+def test_sign_changes_with_different_payload(x402_client):
+    """_sign produces different signatures for different payloads."""
+    sig1 = x402_client._sign({"action": "deposit", "amount": 100})
+    sig2 = x402_client._sign({"action": "deposit", "amount": 200})
+    assert sig1 != sig2
+
+
+def test_sign_changes_with_different_key():
+    """_sign produces different signatures for different private keys."""
+    client1 = X402Client(private_key="key_alpha")
+    client2 = X402Client(private_key="key_beta")
+    payload = {"action": "deposit", "nonce": 42}
+    assert client1._sign(payload) != client2._sign(payload)
+
+
+# ── _post Simulation Mode ──────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_post_simulation_without_httpx(x402_client):
+    """_post returns a simulated success response when httpx is None."""
+    with patch("src.payments.x402_client.httpx", None):
+        result = await x402_client._post("deposit", {"amount": 100})
+    assert result["success"] is True
+    assert result["simulated"] is True
+    assert result["endpoint"] == "deposit"
 
 
 @pytest.mark.asyncio
-async def test_x402_get_balance(x402_client, test_wallet_address):
-    """Test USDx balance query."""
-    # Mock the blockchain call
-    with patch.object(x402_client, '_query_balance', new_callable=AsyncMock) as mock_query:
-        mock_query.return_value = 100.5
-        
-        balance = await x402_client.get_balance(test_wallet_address)
-        assert balance == 100.5
-        mock_query.assert_called_once()
+async def test_get_simulation_without_httpx(x402_client):
+    """_get returns a simulated success response when httpx is None."""
+    with patch("src.payments.x402_client.httpx", None):
+        result = await x402_client._get("balance", {"address": "0xAbc"})
+    assert result["success"] is True
+    assert result["simulated"] is True
 
 
-@pytest.mark.asyncio
-async def test_x402_create_payment(x402_client):
-    """Test creating a payment transaction."""
-    payment = await x402_client.create_payment(
-        to_address="0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063",
-        amount_usdx=50.0,
-        memo="Test payment"
-    )
-    
-    assert payment["success"] is True
-    assert "tx_hash" in payment
-    assert payment["amount"] == 50.0
-
+# ── _post with HTTP mock ───────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_x402_sign_transaction(x402_client):
-    """Test transaction signing."""
-    tx_data = {
-        "to": "0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063",
-        "value": 25.0,
-        "nonce": 1,
-    }
-    
-    signed_tx = x402_client.sign_transaction(tx_data)
-    assert "signature" in signed_tx
-    assert "r" in signed_tx
-    assert "s" in signed_tx
-    assert "v" in signed_tx
+async def test_post_sends_json_body(x402_client):
+    """_post sends the body dict as JSON to the gateway URL."""
+    mock_resp = MagicMock()
+    mock_resp.raise_for_status = MagicMock()
+    mock_resp.json.return_value = {"success": True, "tx_id": "abc"}
 
-
-@pytest.mark.asyncio
-async def test_x402_verify_signature(x402_client):
-    """Test signature verification."""
-    message = "Test message for signing"
-    signature = x402_client.sign_message(message)
-    
-    is_valid = x402_client.verify_signature(
-        message=message,
-        signature=signature,
-        signer_address=x402_client.get_address()
-    )
-    
-    assert is_valid is True
-
-
-@pytest.mark.asyncio
-async def test_x402_batch_payment(x402_client):
-    """Test batch payment processing."""
-    payments = [
-        {"to": "0xAddress1", "amount": 10.0},
-        {"to": "0xAddress2", "amount": 15.0},
-        {"to": "0xAddress3", "amount": 20.0},
-    ]
-    
-    with patch.object(x402_client, 'create_payment', new_callable=AsyncMock) as mock_pay:
-        mock_pay.return_value = {"success": True, "tx_hash": "0xhash"}
-        
-        results = await x402_client.batch_payment(payments)
-        assert len(results) == 3
-        assert all(r["success"] for r in results)
-        assert mock_pay.call_count == 3
-
-
-def test_x402_encode_function_call(x402_client):
-    """Test smart contract function encoding."""
-    encoded = x402_client.encode_function(
-        function_name="transfer",
-        params=["0xRecipient", 100]
-    )
-    
-    assert isinstance(encoded, str)
-    assert encoded.startswith("0x")
-
-
-@pytest.mark.asyncio
-async def test_x402_transaction_history(x402_client, test_wallet_address):
-    """Test transaction history retrieval."""
-    with patch.object(x402_client, '_fetch_history', new_callable=AsyncMock) as mock_fetch:
-        mock_fetch.return_value = [
-            {"tx_hash": "0xhash1", "amount": 50.0, "type": "sent"},
-            {"tx_hash": "0xhash2", "amount": 75.0, "type": "received"},
-        ]
-        
-        history = await x402_client.get_transaction_history(test_wallet_address)
-        assert len(history) == 2
-        assert history[0]["type"] == "sent"
-        assert history[1]["type"] == "received"
-
-
-@pytest.mark.asyncio
-async def test_x402_gas_estimation(x402_client):
-    """Test gas price estimation for transactions."""
-    gas_price = await x402_client.estimate_gas(
-        to_address="0xRecipient",
-        amount_usdx=100.0
-    )
-    
-    assert isinstance(gas_price, (int, float))
-    assert gas_price > 0
-
-
-def test_x402_invalid_address(x402_client):
-    """Test handling of invalid addresses."""
-    with pytest.raises(ValueError):
-        x402_client.validate_address("invalid_address")
-
-
-@pytest.mark.asyncio
-async def test_x402_insufficient_balance(x402_client):
-    """Test payment with insufficient balance."""
-    with patch.object(x402_client, 'get_balance', new_callable=AsyncMock) as mock_balance:
-        mock_balance.return_value = 10.0
-        
-        result = await x402_client.create_payment(
-            to_address="0xRecipient",
-            amount_usdx=100.0  # More than balance
+    with patch("httpx.AsyncClient") as MockClient:
+        MockClient.return_value.__aenter__.return_value.post = AsyncMock(
+            return_value=mock_resp
         )
-        
-        assert result["success"] is False
-        assert "insufficient" in result["error"].lower()
+        result = await x402_client._post("deposit", {"amount_micro": 1_000_000})
+
+    assert result["success"] is True
+
+
+@pytest.mark.asyncio
+async def test_get_sends_params(x402_client):
+    """_get sends query params to the gateway GET endpoint."""
+    mock_resp = MagicMock()
+    mock_resp.raise_for_status = MagicMock()
+    mock_resp.json.return_value = {"balance_micro": 5_000_000}
+
+    with patch("httpx.AsyncClient") as MockClient:
+        MockClient.return_value.__aenter__.return_value.get = AsyncMock(
+            return_value=mock_resp
+        )
+        result = await x402_client._get("balance", {"address": "0xAbc"})
+
+    assert result["balance_micro"] == 5_000_000
+
+
+# ── deposit Tests ──────────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_deposit_payload_structure(x402_client):
+    """deposit builds a correctly structured payload with a valid signature."""
+    with patch("src.payments.x402_client.httpx", None):
+        result = await x402_client.deposit(amount=25.0)
+    assert result["simulated"] is True
+    # The body stored in the simulated response proves signature was added
+    body = result["body"]
+    assert body["action"] == "deposit"
+    assert body["amount_micro"] == 25_000_000
+    assert "signature" in body
+    assert "nonce" in body
+
+
+@pytest.mark.asyncio
+async def test_deposit_default_source(x402_client):
+    """deposit uses 'stablecoin_bridge' as default source."""
+    with patch("src.payments.x402_client.httpx", None):
+        result = await x402_client.deposit(amount=10.0)
+    assert result["body"]["source"] == "stablecoin_bridge"
+
+
+@pytest.mark.asyncio
+async def test_deposit_custom_source(x402_client):
+    """deposit forwards custom source parameter."""
+    with patch("src.payments.x402_client.httpx", None):
+        result = await x402_client.deposit(amount=10.0, source="wire_transfer")
+    assert result["body"]["source"] == "wire_transfer"
+
+
+# ── transfer Tests ─────────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_transfer_payload_structure(x402_client):
+    """transfer builds a correctly structured payload."""
+    with patch("src.payments.x402_client.httpx", None):
+        result = await x402_client.transfer(
+            to_address="0xRecipient",
+            amount=50.0,
+            memo="test payment",
+        )
+    body = result["body"]
+    assert body["action"] == "transfer"
+    assert body["to"] == "0xRecipient"
+    assert body["amount_micro"] == 50_000_000
+    assert body["memo"] == "test payment"
+    assert "signature" in body
+
+
+@pytest.mark.asyncio
+async def test_transfer_includes_contract_terms(x402_client):
+    """transfer includes optional contract_terms when provided."""
+    terms = {"type": "lease", "duration_months": 6}
+    with patch("src.payments.x402_client.httpx", None):
+        result = await x402_client.transfer(
+            to_address="0xAddr",
+            amount=10.0,
+            contract_terms=terms,
+        )
+    assert result["body"]["contract_terms"] == terms
+
+
+@pytest.mark.asyncio
+async def test_transfer_without_contract_terms(x402_client):
+    """transfer omits contract_terms key when not provided."""
+    with patch("src.payments.x402_client.httpx", None):
+        result = await x402_client.transfer(to_address="0xAddr", amount=10.0)
+    assert "contract_terms" not in result["body"]
+
+
+# ── sign_contract Tests ────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_sign_contract_payload(x402_client, sample_contract):
+    """sign_contract builds a payload with action='sign_contract'."""
+    with patch("src.payments.x402_client.httpx", None):
+        result = await x402_client.sign_contract(
+            contract=sample_contract,
+            counterparty="0xCounterparty",
+            signer="0xSigner",
+        )
+    body = result["body"]
+    assert body["action"] == "sign_contract"
+    assert body["counterparty"] == "0xCounterparty"
+    assert body["signer"] == "0xSigner"
+    assert body["contract"] == sample_contract
+    assert "signature" in body
+
+
+# ── balance Tests ──────────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_balance_calls_get(x402_client):
+    """balance delegates to _get with address parameter."""
+    mock_resp = MagicMock()
+    mock_resp.raise_for_status = MagicMock()
+    mock_resp.json.return_value = {"balance": 999.9}
+
+    with patch("httpx.AsyncClient") as MockClient:
+        MockClient.return_value.__aenter__.return_value.get = AsyncMock(
+            return_value=mock_resp
+        )
+        result = await x402_client.balance("0xMyAddr")
+
+    assert result["balance"] == 999.9
+
+
+# ── get_contract Tests ────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_get_contract_calls_get(x402_client):
+    """get_contract delegates to _get with contract_id in the path."""
+    mock_resp = MagicMock()
+    mock_resp.raise_for_status = MagicMock()
+    mock_resp.json.return_value = {"contract_id": "c-001", "status": "signed"}
+
+    with patch("httpx.AsyncClient") as MockClient:
+        MockClient.return_value.__aenter__.return_value.get = AsyncMock(
+            return_value=mock_resp
+        )
+        result = await x402_client.get_contract("c-001")
+
+    assert result["contract_id"] == "c-001"
+
+
+# ── stream_payments Tests ──────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_stream_payments_payload(x402_client):
+    """stream_payments builds the expected payload."""
+    with patch("src.payments.x402_client.httpx", None):
+        result = await x402_client.stream_payments(
+            to_address="0xStream",
+            rate_usdx_per_second=0.01,
+            duration_seconds=3600,
+        )
+    body = result["body"]
+    assert body["action"] == "stream"
+    assert body["to"] == "0xStream"
+    assert body["duration_seconds"] == 3600
+    assert body["rate_micro_per_second"] == _to_micro(0.01)
+    assert "signature" in body
+
+
+# ── make_x402_client Tests ────────────────────────────────────────────────────
+
+def test_make_x402_client_from_env():
+    """make_x402_client builds an X402Client from a dict of env vars."""
+    env = {
+        "X402_PRIVATE_KEY": "env_key_abc",
+        "X402_GATEWAY": "https://custom-gateway.example.com/api/v1",
+    }
+    client = make_x402_client(env=env)
+    assert isinstance(client, X402Client)
+    assert client.private_key == "env_key_abc"
+    assert client.gateway_url == "https://custom-gateway.example.com/api/v1"
+
+
+def test_make_x402_client_defaults_when_env_missing():
+    """make_x402_client uses defaults when env vars are absent."""
+    client = make_x402_client(env={})
+    assert client.private_key == ""
+    assert client.gateway_url == "https://x402.org/api/v1"

@@ -1,316 +1,208 @@
-"""Unit tests for LangGraph workflow optimization."""
+"""Unit tests for individual LangGraph node functions and workflow helpers."""
 
 import pytest
-from unittest.mock import Mock, AsyncMock, patch, MagicMock
-from typing import Dict, Any, List
+from unittest.mock import MagicMock, patch
+
+from src.graphs.langgraph_workflow import (
+    assess_node,
+    plan_node,
+    execute_node,
+    reflect_node,
+    should_continue,
+    _get_llm,
+    LANGGRAPH_AVAILABLE,
+    LANGCHAIN_AVAILABLE,
+    END,
+)
 
 
-class TestLangGraphWorkflow:
-    """Test LangGraph workflow creation and optimization."""
-
-    def test_workflow_initialization(self):
-        """Test basic workflow initialization."""
-        workflow_config = {
-            "name": "agent_decision_workflow",
-            "nodes": [
-                {"id": "perceive", "type": "sensor"},
-                {"id": "analyze", "type": "reasoning"},
-                {"id": "decide", "type": "decision"},
-                {"id": "act", "type": "action"}
-            ],
-            "edges": [
-                {"from": "perceive", "to": "analyze"},
-                {"from": "analyze", "to": "decide"},
-                {"from": "decide", "to": "act"}
-            ]
-        }
-        
-        # TODO: Import and test actual LangGraph workflow
-        # from src.graphs.langgraph_workflow import LangGraphWorkflow
-        # workflow = LangGraphWorkflow(workflow_config)
-        
-        assert workflow_config["name"] == "agent_decision_workflow"
-        assert len(workflow_config["nodes"]) == 4
-        assert len(workflow_config["edges"]) == 3
-
-    def test_workflow_with_conditional_edges(self):
-        """Test workflow with conditional branching."""
-        workflow = {
-            "nodes": ["check_balance", "sufficient", "insufficient", "execute"],
-            "edges": [
-                {"from": "check_balance", "to": "sufficient", "condition": "balance >= amount"},
-                {"from": "check_balance", "to": "insufficient", "condition": "balance < amount"},
-                {"from": "sufficient", "to": "execute"}
-            ]
-        }
-        
-        # TODO: Test conditional routing
-        assert len(workflow["edges"]) == 3
-        assert any(edge.get("condition") for edge in workflow["edges"])
-
-    def test_workflow_with_parallel_nodes(self):
-        """Test workflow with parallel execution branches."""
-        parallel_config = {
-            "parallel_nodes": [
-                ["check_risk", "verify_compliance"],
-                ["check_liquidity", "check_gas_price"],
-                ["validate_contract", "check_signatures"]
-            ],
-            "join_node": "proceed_if_all_pass"
-        }
-        
-        # TODO: Test parallel execution
-        assert len(parallel_config["parallel_nodes"]) == 3
-        assert parallel_config["join_node"] == "proceed_if_all_pass"
-
-    def test_workflow_node_state_management(self):
-        """Test that workflow maintains state between nodes."""
-        initial_state = {
-            "agent_id": "agent-001",
-            "balance": 1000,
-            "active_trades": []
-        }
-        
-        # TODO: Test state transitions through workflow
-        assert initial_state["agent_id"] == "agent-001"
-        assert initial_state["balance"] == 1000
-
-    @pytest.mark.asyncio
-    async def test_async_workflow_execution(self):
-        """Test asynchronous workflow execution."""
-        workflow_mock = AsyncMock()
-        workflow_mock.execute.return_value = {
-            "status": "completed",
-            "nodes_executed": 4,
-            "duration_ms": 120
-        }
-        
-        # TODO: Test actual async workflow
-        result = await workflow_mock.execute()
-        assert result["status"] == "completed"
-        assert result["nodes_executed"] == 4
+def _create_test_state(balance=50.0, score=0.0, iteration=0, strategies=None, chosen=None, actions=None):
+    return {
+        "parcel_state": {
+            "parcel_id": "u-001",
+            "owner": "0xUnit",
+            "location": {"lat": 0.0, "lng": 0.0, "alt": 0.0},
+            "balance_usdx": balance,
+            "metadata": {},
+            "active": True,
+            "last_updated": "2026-01-01T00:00:00",
+        },
+        "context": {},
+        "assessment": None,
+        "strategies": strategies or [],
+        "chosen_strategy": chosen,
+        "actions_taken": actions or [],
+        "reflection": None,
+        "score": score,
+        "iteration": iteration,
+    }
 
 
-class TestWorkflowOptimization:
-    """Test LangGraph optimization features."""
+# ── _get_llm Tests ─────────────────────────────────────────────────────────────
 
-    def test_optimize_sequential_workflow(self):
-        """Test optimization of sequential workflow."""
-        original_workflow = {
-            "nodes": ["A", "B", "C", "D"],
-            "edges": [{"from": "A", "to": "B"}, {"from": "B", "to": "C"}, {"from": "C", "to": "D"}]
-        }
-        
-        # TODO: Implement optimization logic
-        # optimizer = WorkflowOptimizer()
-        # optimized = optimizer.optimize(original_workflow)
-        
-        assert len(original_workflow["nodes"]) == 4
-
-    def test_remove_redundant_nodes(self):
-        """Test removal of redundant workflow nodes."""
-        workflow = {
-            "nodes": ["fetch_data", "validate", "fetch_data_again", "process"],
-            "redundant_nodes": ["fetch_data_again"]
-        }
-        
-        # TODO: Implement redundancy detection
-        assert "fetch_data_again" in workflow["redundant_nodes"]
-
-    def test_parallelize_independent_nodes(self):
-        """Test automatic parallelization of independent nodes."""
-        sequential = {
-            "nodes": ["check_A", "check_B", "check_C"],
-            "edges": []
-        }
-        
-        # TODO: Detect independent nodes and parallelize
-        # These nodes have no dependencies, should be parallelized
-        assert len(sequential["nodes"]) == 3
-        assert len(sequential["edges"]) == 0
-
-    def test_workflow_caching(self):
-        """Test caching of workflow execution results."""
-        cache_config = {
-            "enabled": True,
-            "ttl_seconds": 300,
-            "cache_nodes": ["expensive_computation", "api_call"]
-        }
-        
-        # TODO: Test workflow result caching
-        assert cache_config["enabled"] is True
-        assert cache_config["ttl_seconds"] == 300
+def test_get_llm_returns_none_when_langchain_unavailable():
+    """_get_llm returns None when LANGCHAIN_AVAILABLE is False."""
+    with patch("src.graphs.langgraph_workflow.LANGCHAIN_AVAILABLE", False):
+        llm = _get_llm()
+    assert llm is None
 
 
-class TestAgentDecisionWorkflow:
-    """Test agent-specific decision workflows."""
-
-    @pytest.mark.asyncio
-    async def test_trading_decision_workflow(self):
-        """Test workflow for trading decisions."""
-        decision_workflow = {
-            "input": {"trade_proposal": {"asset": "USDC", "amount": 100, "price": 1.0}},
-            "steps": [
-                "analyze_market_conditions",
-                "assess_risk",
-                "check_portfolio_impact",
-                "make_decision"
-            ],
-            "output": {"decision": "accept", "confidence": 0.85}
-        }
-        
-        # TODO: Test trading workflow
-        assert decision_workflow["output"]["decision"] == "accept"
-        assert decision_workflow["output"]["confidence"] > 0.8
-
-    @pytest.mark.asyncio
-    async def test_contract_negotiation_workflow(self):
-        """Test workflow for contract negotiation."""
-        negotiation_steps = [
-            "receive_proposal",
-            "evaluate_terms",
-            "generate_counter_offer",
-            "assess_response",
-            "finalize_or_continue"
-        ]
-        
-        # TODO: Test negotiation workflow
-        assert len(negotiation_steps) == 5
-
-    @pytest.mark.asyncio
-    async def test_risk_assessment_workflow(self):
-        """Test risk assessment workflow."""
-        risk_factors = {
-            "market_volatility": 0.15,
-            "counterparty_credit": 0.05,
-            "liquidity_risk": 0.10,
-            "overall_risk_score": 0.30
-        }
-        
-        # TODO: Calculate risk score using workflow
-        assert risk_factors["overall_risk_score"] < 0.5  # Acceptable risk
+def test_get_llm_returns_none_when_no_api_keys(monkeypatch):
+    """_get_llm returns None when neither SENTIENT_API_KEY nor OPENAI_API_KEY is set."""
+    monkeypatch.delenv("SENTIENT_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    with patch("src.graphs.langgraph_workflow.LANGCHAIN_AVAILABLE", True):
+        llm = _get_llm()
+    assert llm is None
 
 
-class TestWorkflowIntegration:
-    """Test integration of workflows with agent components."""
+# ── assess_node Unit Tests ─────────────────────────────────────────────────────
 
-    @pytest.mark.asyncio
-    async def test_workflow_with_mcp_tools(self):
-        """Test workflow integration with MCP tools."""
-        workflow_with_tools = {
-            "nodes": [
-                {"id": "call_tool_1", "tool": "get_market_data"},
-                {"id": "call_tool_2", "tool": "send_message"},
-                {"id": "process_results", "type": "computation"}
-            ]
-        }
-        
-        # TODO: Test MCP tool integration
-        assert len(workflow_with_tools["nodes"]) == 3
-
-    @pytest.mark.asyncio
-    async def test_workflow_with_sentient_foundation(self):
-        """Test workflow using Sentient Foundation model."""
-        model_config = {
-            "model_name": "sentient-foundation",
-            "reasoning_steps": ["observe", "reason", "conclude"],
-            "temperature": 0.7
-        }
-        
-        # TODO: Test model integration in workflow
-        assert model_config["model_name"] == "sentient-foundation"
-
-    @pytest.mark.asyncio
-    async def test_workflow_error_handling(self):
-        """Test workflow error handling and recovery."""
-        error_config = {
-            "retry_policy": {"max_retries": 3, "backoff": "exponential"},
-            "fallback_node": "error_handler",
-            "circuit_breaker": {"threshold": 5, "timeout": 60}
-        }
-        
-        # TODO: Test error handling
-        assert error_config["retry_policy"]["max_retries"] == 3
-
-    @pytest.mark.asyncio
-    async def test_workflow_monitoring(self):
-        """Test workflow execution monitoring."""
-        metrics = {
-            "execution_time_ms": 150,
-            "nodes_executed": 8,
-            "nodes_failed": 0,
-            "cache_hits": 3,
-            "cache_misses": 5
-        }
-        
-        # TODO: Test metrics collection
-        assert metrics["nodes_failed"] == 0
-        assert metrics["execution_time_ms"] < 200
+@pytest.mark.unit
+def test_assess_node_returns_dict_with_assessment():
+    s = _create_test_state(balance=75.0)
+    with patch("src.graphs.langgraph_workflow._get_llm", return_value=None):
+        out = assess_node(s)
+    assert isinstance(out, dict)
+    assert "assessment" in out
+    assert out["assessment"] is not None
 
 
-class TestWorkflowValidation:
-    """Test workflow validation and correctness checks."""
+@pytest.mark.unit
+def test_assess_node_includes_parcel_id_in_fallback():
+    s = _create_test_state()
+    with patch("src.graphs.langgraph_workflow._get_llm", return_value=None):
+        out = assess_node(s)
+    assert "u-001" in out["assessment"]
 
-    def test_validate_workflow_structure(self):
-        """Test workflow structure validation."""
-        valid_workflow = {
-            "nodes": [{"id": "start"}, {"id": "end"}],
-            "edges": [{"from": "start", "to": "end"}],
-            "start_node": "start",
-            "end_nodes": ["end"]
-        }
-        
-        # TODO: Implement validation
-        assert "start_node" in valid_workflow
-        assert "end_nodes" in valid_workflow
 
-    def test_detect_cycles_in_workflow(self):
-        """Test detection of cycles in workflow graph."""
-        workflow_with_cycle = {
-            "nodes": ["A", "B", "C"],
-            "edges": [
-                {"from": "A", "to": "B"},
-                {"from": "B", "to": "C"},
-                {"from": "C", "to": "A"}  # Creates cycle
-            ]
-        }
-        
-        # TODO: Implement cycle detection
-        assert len(workflow_with_cycle["edges"]) == 3
+@pytest.mark.unit
+def test_assess_node_includes_location_in_fallback():
+    s = _create_test_state()
+    with patch("src.graphs.langgraph_workflow._get_llm", return_value=None):
+        out = assess_node(s)
+    # Location dict should appear in assessment string
+    assert "lat" in out["assessment"] or "Location" in out["assessment"]
 
-    def test_validate_edge_connections(self):
-        """Test that all edges connect to existing nodes."""
-        workflow = {
-            "nodes": [{"id": "A"}, {"id": "B"}],
-            "edges": [{"from": "A", "to": "B"}]
-        }
-        
-        # TODO: Validate all edges
-        node_ids = [node["id"] for node in workflow["nodes"]]
-        for edge in workflow["edges"]:
-            assert edge["from"] in node_ids
-            assert edge["to"] in node_ids
 
-    def test_workflow_input_output_schema(self):
-        """Test workflow input/output schema validation."""
-        schema = {
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "agent_id": {"type": "string"},
-                    "action": {"type": "string"}
-                },
-                "required": ["agent_id", "action"]
-            },
-            "output_schema": {
-                "type": "object",
-                "properties": {
-                    "result": {"type": "string"},
-                    "status": {"type": "string"}
-                }
-            }
-        }
-        
-        # TODO: Validate schemas
-        assert "input_schema" in schema
-        assert "output_schema" in schema
+@pytest.mark.unit
+def test_assess_node_llm_response_used_as_assessment():
+    s = _create_test_state()
+    mock_llm = MagicMock()
+    mock_llm.invoke.return_value = MagicMock(content="Excellent opportunity.")
+    with patch("src.graphs.langgraph_workflow._get_llm", return_value=mock_llm):
+        out = assess_node(s)
+    assert out["assessment"] == "Excellent opportunity."
+
+
+# ── plan_node Unit Tests ───────────────────────────────────────────────────────
+
+@pytest.mark.unit
+def test_plan_node_returns_three_fallback_strategies():
+    s = _create_test_state()
+    s["assessment"] = "ok"
+    with patch("src.graphs.langgraph_workflow._get_llm", return_value=None):
+        out = plan_node(s)
+    assert len(out["strategies"]) == 3
+
+
+@pytest.mark.unit
+def test_plan_node_strategies_are_strings():
+    s = _create_test_state()
+    s["assessment"] = "ok"
+    with patch("src.graphs.langgraph_workflow._get_llm", return_value=None):
+        out = plan_node(s)
+    assert all(isinstance(st, str) for st in out["strategies"])
+
+
+@pytest.mark.unit
+def test_plan_node_llm_strategies_parsed():
+    s = _create_test_state()
+    s["assessment"] = "ok"
+    mock_llm = MagicMock()
+    mock_llm.invoke.return_value = MagicMock(
+        content="1. Sell land\n2. Buy more\n3. Hold position"
+    )
+    with patch("src.graphs.langgraph_workflow._get_llm", return_value=mock_llm):
+        out = plan_node(s)
+    assert len(out["strategies"]) == 3
+    assert "Sell land" in out["strategies"][0]
+
+
+@pytest.mark.unit
+def test_plan_node_limits_to_three_llm_strategies():
+    s = _create_test_state()
+    s["assessment"] = "ok"
+    mock_llm = MagicMock()
+    mock_llm.invoke.return_value = MagicMock(
+        content="1. S1\n2. S2\n3. S3\n4. S4\n5. S5"
+    )
+    with patch("src.graphs.langgraph_workflow._get_llm", return_value=mock_llm):
+        out = plan_node(s)
+    assert len(out["strategies"]) == 3
+
+
+# ── execute_node Unit Tests ────────────────────────────────────────────────────
+
+@pytest.mark.unit
+def test_execute_node_action_status_is_simulated():
+    s = _create_test_state(strategies=["Do A"])
+    out = execute_node(s)
+    assert out["actions_taken"][0]["status"] == "simulated"
+
+
+@pytest.mark.unit
+def test_execute_node_action_has_executed_at():
+    s = _create_test_state(strategies=["Do B"])
+    out = execute_node(s)
+    assert "executed_at" in out["actions_taken"][0]
+
+
+@pytest.mark.unit
+def test_execute_node_does_not_modify_strategies():
+    s = _create_test_state(strategies=["A", "B", "C"])
+    out = execute_node(s)
+    assert out["strategies"] == ["A", "B", "C"]
+
+
+# ── reflect_node Unit Tests ────────────────────────────────────────────────────
+
+@pytest.mark.unit
+def test_reflect_node_score_is_float():
+    s = _create_test_state(chosen="S", actions=[{"strategy": "S", "status": "simulated"}])
+    with patch("src.graphs.langgraph_workflow._get_llm", return_value=None):
+        out = reflect_node(s)
+    assert isinstance(out["score"], float)
+
+
+@pytest.mark.unit
+def test_reflect_node_score_in_valid_range():
+    s = _create_test_state(chosen="S", actions=[])
+    with patch("src.graphs.langgraph_workflow._get_llm", return_value=None):
+        out = reflect_node(s)
+    assert 0.0 <= out["score"] <= 1.0
+
+
+@pytest.mark.unit
+def test_reflect_node_reflection_is_string():
+    s = _create_test_state(chosen="S", actions=[])
+    with patch("src.graphs.langgraph_workflow._get_llm", return_value=None):
+        out = reflect_node(s)
+    assert isinstance(out["reflection"], str)
+
+
+# ── should_continue Unit Tests ─────────────────────────────────────────────────
+
+@pytest.mark.unit
+@pytest.mark.parametrize("score,iteration,expected", [
+    (0.9, 0, END),
+    (0.8, 0, END),
+    (0.5, 3, END),
+    (0.5, 4, END),
+    (0.5, 0, "assess"),
+    (0.79, 2, "assess"),
+    (0.0, 0, "assess"),
+])
+def test_should_continue_parametrized(score, iteration, expected):
+    s = _create_test_state(score=score, iteration=iteration)
+    assert should_continue(s) == expected
