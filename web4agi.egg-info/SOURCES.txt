@@ -1,0 +1,13 @@
+README.md
+pyproject.toml
+src/__init__.py
+src/main.py
+tests/test_agents.py
+tests/test_graphs.py
+tests/test_mcp.py
+tests/test_payments.py
+web4agi.egg-info/PKG-INFO
+web4agi.egg-info/SOURCES.txt
+web4agi.egg-info/dependency_links.txt
+web4agi.egg-info/requires.txt
+web4agi.egg-info/top_level.txt
