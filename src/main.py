@@ -8,6 +8,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.api import parcels, trades, contracts, payments, mcp
+from src.api import agents as agents_router
+from src.api import auth as auth_router
+from src.api import trades_v2, contracts_v2
 from src import __version__
 
 
@@ -53,6 +56,12 @@ app.include_router(trades.router, prefix="/api/v1/trades", tags=["Trades"])
 app.include_router(contracts.router, prefix="/api/v1/contracts", tags=["Contracts"])
 app.include_router(payments.router, prefix="/api/v1/payments", tags=["Payments"])
 app.include_router(mcp.router, prefix="/api/v1/mcp", tags=["MCP"])
+
+# Alternative API paths used by integration tests
+app.include_router(agents_router.router, prefix="/api/agents", tags=["Agents"])
+app.include_router(auth_router.router, prefix="/api/auth", tags=["Auth"])
+app.include_router(trades_v2.router, prefix="/api/trades", tags=["Trades v2"])
+app.include_router(contracts_v2.router, prefix="/api/contracts", tags=["Contracts v2"])
 
 
 # ── Health check ──────────────────────────────────────────────────────────────
