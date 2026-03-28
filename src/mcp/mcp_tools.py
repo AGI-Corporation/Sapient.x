@@ -224,7 +224,7 @@ class MCPToolkit:
                     f"msg-{int(datetime.utcnow().timestamp() * 1000)}-{attempt}",
                 )
                 return result
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001 — catching any send failure for retry
                 last_error = exc
         return {"success": False, "error": str(last_error)}
 
@@ -286,7 +286,7 @@ class MCPToolkit:
                 )
                 resp.raise_for_status()
                 return resp.json()
-        except Exception:
+        except (httpx.RequestError, httpx.HTTPStatusError):
             # Simulation mode when Route.X is unreachable
             print(f"[MCP Sim] {self.agent_id} -> {to}: {json.dumps(payload)[:80]}")
             return {"success": True, "simulated": True}

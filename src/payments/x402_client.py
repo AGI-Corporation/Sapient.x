@@ -93,8 +93,8 @@ class X402Client:
                 resp = await client.post(url, json=body)
                 resp.raise_for_status()
                 return resp.json()
-        except Exception:
-            # Simulation mode when gateway is unreachable
+        except (httpx.RequestError, httpx.HTTPStatusError):
+            # Simulation mode when gateway is unreachable or returns an error
             return {
                 "success": True,
                 "simulated": True,
@@ -112,7 +112,7 @@ class X402Client:
                 resp = await client.get(url, params=params or {})
                 resp.raise_for_status()
                 return resp.json()
-        except Exception:
+        except (httpx.RequestError, httpx.HTTPStatusError):
             return {"success": True, "simulated": True}
 
     # ── Public API ────────────────────────────────────────────────────────────
@@ -263,7 +263,7 @@ class X402Client:
             balance = await self.get_balance(self.get_address())
             if balance < amount_usdx:
                 return {"success": False, "error": "Insufficient balance"}
-        except Exception:
+        except (ConnectionError, OSError, ValueError):
             # Simulation mode or connection failure — proceed without balance check
             pass
 

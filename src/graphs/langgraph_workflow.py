@@ -151,7 +151,7 @@ class ParcelOptimizationWorkflow:
                     score = float(llm_result.get("score", 0.5))
                 else:
                     score = 0.5
-            except Exception:  # noqa: BLE001
+            except Exception:  # noqa: BLE001 — LLM call may fail with varied errors; use default score
                 score = 0.5
             scored.append({**strategy, "score": score})
         return scored
@@ -257,7 +257,7 @@ class ParcelOptimizationWorkflow:
                 self.memory.add(result)
 
             return result
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 — propagate all workflow errors as error dict
             return {"error": str(exc)}
 
 
