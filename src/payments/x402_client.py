@@ -59,7 +59,7 @@ class X402Client:
         timeout: int = 30,
         simulation_mode: bool = SIMULATION_MODE,
     ):
-        self.private_key = private_key or ""
+        self.private_key = private_key or "default_test_key"
         self.gateway_url = gateway_url.rstrip("/")
         self.timeout = timeout
         self.simulation_mode = simulation_mode

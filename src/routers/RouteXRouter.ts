@@ -7,6 +7,13 @@ const router = express.Router();
 
 const MCP_TOOLS_ENDPOINT = "https://mcp.agi-corp.com/v1/tools";
 
+// In-memory message store for agent-to-agent communication
+// agent_id -> array of message envelopes
+const messageInboxes: Record<string, any[]> = {};
+
+/**
+ * Route discovery endpoint
+ */
 router.post("/route", async (req, res) => {
   const { parcel_id, destination, intent } = req.body;
 
@@ -30,6 +37,47 @@ router.post("/route", async (req, res) => {
         endpoint: `${MCP_TOOLS_ENDPOINT}/${recommended_tool}`
       }
     }
+  });
+});
+
+/**
+ * Send a message to another agent
+ * POST /messages
+ */
+router.post("/messages", (req, res) => {
+  const envelope = req.body;
+  const { to } = envelope;
+
+  if (!to) {
+    return res.status(400).json({ success: false, error: "Missing 'to' field" });
+  }
+
+  console.log(`[Route.X] Messaging: ${envelope.from} -> ${to}`);
+
+  if (!messageInboxes[to]) {
+    messageInboxes[to] = [];
+  }
+
+  messageInboxes[to].push(envelope);
+
+  res.json({ success: true, timestamp: new Date().toISOString() });
+});
+
+/**
+ * Retrieve pending messages for an agent
+ * GET /messages/:agent_id
+ */
+router.get("/messages/:agent_id", (req, res) => {
+  const { agent_id } = req.params;
+  const messages = messageInboxes[agent_id] || [];
+
+  // Clear inbox after retrieval (polling pattern)
+  messageInboxes[agent_id] = [];
+
+  res.json({
+    success: true,
+    agent_id,
+    messages
   });
 });
 
