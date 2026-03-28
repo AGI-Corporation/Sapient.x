@@ -11,7 +11,10 @@ Workflow steps:
   4. Reflect — score outcome and update memory
 """
 
-from typing import Dict, Any, List, Optional, TypedDict
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional, TypedDict
 from datetime import datetime
 
 try:
@@ -24,7 +27,7 @@ except ImportError:
     END = "__end__"
 
 try:
-    from langchain_core.messages import HumanMessage, AIMessage
+    from langchain_core.messages import HumanMessage
     from langchain_openai import ChatOpenAI
     LANGCHAIN_AVAILABLE = True
 except ImportError:
@@ -32,7 +35,7 @@ except ImportError:
     ChatOpenAI = None
 
 
-# ── State Schema ───────────────────────────────────────────────────────────────
+# ── Low-level State Schema (used by the raw LangGraph pipeline) ─────────────────
 
 class ParcelOptState(TypedDict):
     parcel_state: Dict[str, Any]
@@ -44,6 +47,227 @@ class ParcelOptState(TypedDict):
     reflection: Optional[str]
     score: float
     iteration: int
+
+
+# ── High-level Workflow Abstractions ──────────────────────────────────────────────
+
+@dataclass
+class WorkflowState:
+    """High-level state object used by ParcelOptimizationWorkflow."""
+
+    parcel_id: str
+    context: Dict[str, Any]
+    current_step: str
+    strategies: List[Dict] = field(default_factory=list)
+    analysis: Optional[Dict] = None
+
+
+class WorkflowMemory:
+    """Simple in-process memory store for workflow history."""
+
+    def __init__(self) -> None:
+        self._history: List[Dict] = []
+
+    def add(self, entry: Dict) -> None:
+        self._history.append(entry)
+
+    def get_history(self) -> List[Dict]:
+        return list(self._history)
+
+
+class WorkflowGraph:
+    """Lightweight graph descriptor for the optimization workflow."""
+
+    _NODES = ["analyze", "generate_strategies", "evaluate", "select", "complete"]
+
+    def get_nodes(self) -> Dict[str, Any]:
+        return {node: {} for node in self._NODES}
+
+
+class ParcelOptimizationWorkflow:
+    """High-level parcel optimization workflow wrapping the LangGraph pipeline."""
+
+    _STEP_ORDER = ["analyze", "generate_strategies", "evaluate", "select", "complete"]
+    _RISK_ORDER = ["low", "medium", "high"]
+
+    def __init__(
+        self,
+        parcel_id: str,
+        model: str = "gpt-4",
+        max_budget: Optional[float] = None,
+        risk_tolerance: Optional[str] = None,
+        objectives: Optional[List[str]] = None,
+        use_memory: bool = False,
+    ) -> None:
+        self.parcel_id = parcel_id
+        self.model = model
+        self.max_budget = max_budget
+        self.risk_tolerance = risk_tolerance
+        self.objectives = objectives or []
+        self.graph = WorkflowGraph()
+        self.memory: Optional[WorkflowMemory] = WorkflowMemory() if use_memory else None
+
+    # ── Internal LLM helper ──────────────────────────────────────────────────
+
+    async def _call_llm(self, prompt: str) -> Any:
+        """Call the configured LLM and return its response content."""
+        llm = _get_llm()
+        if llm is None:
+            return None
+        response = llm.invoke([HumanMessage(content=prompt)])
+        return response.content
+
+    # ── Workflow steps ────────────────────────────────────────────────────────
+
+    async def analyze(self, state: WorkflowState) -> Dict:
+        """Assess parcel state and market conditions via LLM or heuristic."""
+        result = await self._call_llm(
+            f"Analyze parcel {state.parcel_id}: {state.context}"
+        )
+        if result is None:
+            return {"assessment": "neutral", "risk": "medium"}
+        if isinstance(result, dict):
+            return result
+        return {"assessment": str(result)}
+
+    async def generate_strategies(self, state: WorkflowState) -> List[Dict]:
+        """Generate a list of actionable strategies via LLM or heuristic."""
+        result = await self._call_llm(
+            f"Generate strategies for parcel {state.parcel_id}"
+        )
+        if result is None:
+            return [{"type": "hold", "action": "maintain_current_state"}]
+        if isinstance(result, list):
+            return result
+        return [{"type": "general", "action": str(result)}]
+
+    async def evaluate_strategies(self, state: WorkflowState) -> List[Dict]:
+        """Score each strategy, falling back to 0.5 when LLM is unavailable."""
+        scored: List[Dict] = []
+        for strategy in state.strategies:
+            try:
+                llm_result = await self._call_llm(f"Evaluate strategy: {strategy}")
+                if isinstance(llm_result, dict):
+                    score = float(llm_result.get("score", 0.5))
+                else:
+                    score = 0.5
+            except Exception:  # noqa: BLE001 — LLM call may fail with varied errors; use default score
+                score = 0.5
+            scored.append({**strategy, "score": score})
+        return scored
+
+    async def select_best_strategy(self, state: WorkflowState) -> Dict:
+        """Return the strategy with the highest score."""
+        if not state.strategies:
+            return {}
+        return max(state.strategies, key=lambda s: s.get("score", 0.0))
+
+    def next_step(self, current: str) -> str:
+        """Return the next step name in the linear workflow."""
+        try:
+            idx = self._STEP_ORDER.index(current)
+            if idx < len(self._STEP_ORDER) - 1:
+                return self._STEP_ORDER[idx + 1]
+        except ValueError:
+            pass
+        return "complete"
+
+    def filter_by_constraints(self, strategies: List[Dict]) -> List[Dict]:
+        """Remove strategies that violate budget or risk-tolerance constraints."""
+        result = []
+        for s in strategies:
+            if self.max_budget is not None and s.get("amount", 0) > self.max_budget:
+                continue
+            if self.risk_tolerance is not None and self.risk_tolerance in self._RISK_ORDER:
+                allowed_idx = self._RISK_ORDER.index(self.risk_tolerance)
+                s_risk = s.get("risk", "high")
+                s_risk_idx = (
+                    self._RISK_ORDER.index(s_risk)
+                    if s_risk in self._RISK_ORDER
+                    else len(self._RISK_ORDER)
+                )
+                if s_risk_idx > allowed_idx:
+                    continue
+            result.append(s)
+        return result
+
+    def rank_multi_objective(self, strategies: List[Dict]) -> List[Dict]:
+        """Score strategies by combining multiple objectives with equal weights."""
+        objectives = self.objectives or ["maximize_profit"]
+        weight = 1.0 / len(objectives)
+        ranked = []
+        for s in strategies:
+            score = 0.0
+            for obj in objectives:
+                if obj == "maximize_profit":
+                    score += weight * min(s.get("profit", 0) / 100, 1.0)
+                elif obj == "minimize_risk":
+                    score += weight * (1.0 - min(s.get("risk", 0.5), 1.0))
+                elif obj == "maximize_liquidity":
+                    score += weight * min(s.get("liquidity", 0.5), 1.0)
+            ranked.append({**s, "score": round(score, 3)})
+        return ranked
+
+    async def run(self, parcel_state: Any) -> Dict:
+        """Execute the full optimization workflow and return the result."""
+        try:
+            if isinstance(parcel_state, dict):
+                state = WorkflowState(
+                    parcel_id=parcel_state.get("parcel_id", self.parcel_id),
+                    context=parcel_state,
+                    current_step="analyze",
+                )
+            else:
+                state = parcel_state
+
+            analysis = await self.analyze(state)
+
+            gen_state = WorkflowState(
+                parcel_id=state.parcel_id,
+                context=state.context,
+                current_step="generate_strategies",
+                analysis=analysis,
+            )
+            strategies = await self.generate_strategies(gen_state)
+
+            eval_state = WorkflowState(
+                parcel_id=state.parcel_id,
+                context=state.context,
+                current_step="evaluate",
+                strategies=strategies,
+            )
+            evaluated = await self.evaluate_strategies(eval_state)
+
+            select_state = WorkflowState(
+                parcel_id=state.parcel_id,
+                context=state.context,
+                current_step="select",
+                strategies=evaluated,
+            )
+            best = await self.select_best_strategy(select_state)
+
+            result: Dict = {
+                "parcel_id": state.parcel_id,
+                "assessment": analysis,
+                "strategies": evaluated,
+                "best_strategy": best,
+            }
+
+            if self.memory is not None:
+                self.memory.add(result)
+
+            return result
+        except Exception as exc:  # noqa: BLE001 — propagate all workflow errors as error dict
+            return {"error": str(exc)}
+
+
+async def optimize_parcel_strategy(
+    parcel_id: str,
+    context: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Run the high-level optimization workflow for a parcel."""
+    workflow = ParcelOptimizationWorkflow(parcel_id=parcel_id)
+    return await workflow.run(context or {})
 
 
 # ── Node Functions ─────────────────────────────────────────────────────────────
@@ -161,7 +385,8 @@ Respond in format: SCORE: 0.X | REFLECTION: <text>"""
         score = 0.7 if state.get("chosen_strategy") else 0.3
         reflection = f"Executed: '{state.get('chosen_strategy', 'none')}'. Iteration {state.get('iteration', 0)} complete."
 
-    return {**state, "score": score, "reflection": reflection}
+    iteration = state.get("iteration", 0) + 1
+    return {**state, "score": score, "reflection": reflection, "iteration": iteration}
 
 
 def should_continue(state: ParcelOptState) -> str:
