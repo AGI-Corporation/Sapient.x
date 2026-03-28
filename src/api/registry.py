@@ -1,6 +1,6 @@
 """NANDA Agent Registry API Router — Web4AGI."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
@@ -11,7 +11,7 @@ router = APIRouter()
 # ── Registry Store (In-memory for roadmap) ────────────────────────────────────
 
 # agent_id -> registry details
-AGENT_REGISTRY: Dict[str, Dict[str, Any]] = {}
+AGENT_REGISTRY: dict[str, dict[str, Any]] = {}
 
 
 # ── Endpoints ───────────────────────────────────────────────────────────────
@@ -26,8 +26,8 @@ async def register_agent(fact: AgentFact):
     )
 
 
-@router.get("/discover", response_model=List[AgentFact])
-async def discover_agents(capability: Optional[str] = None):
+@router.get("/discover", response_model=list[AgentFact])
+async def discover_agents(capability: str | None = None):
     """Discover agents by capability."""
     results = []
     for fact in AGENT_REGISTRY.values():

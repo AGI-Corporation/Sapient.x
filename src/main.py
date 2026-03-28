@@ -103,7 +103,7 @@ async def system_about():
         with open(roadmap_path) as f:
             for line in f:
                 if line.startswith("## Milestone") and "(In Progress)" in line:
-                    milestone = line.strip("## ").strip()
+                    milestone = line.lstrip("#").lstrip().strip()
                     break
 
     return {
@@ -150,7 +150,7 @@ async def system_map():
 
 
 @app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
+async def global_exception_handler(request: Request, exc: Exception):  # noqa: ARG001
     """Global handler to return standardized ErrorResponse for all unhandled exceptions."""
     import traceback
 
