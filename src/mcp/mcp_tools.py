@@ -63,6 +63,128 @@ async def tool_payment_transfer(from_id: str, to_id: str, amount_usdx: float) ->
     return {"tool": "payment.transfer", "from": from_id, "to": to_id, "amount": amount_usdx}
 
 
+# ── Bitrefill eCommerce MCP Tools ───────────────────────────────────────────────
+
+@register_tool("bitrefill.ping")
+async def tool_bitrefill_ping() -> Dict:
+    """Check whether the Bitrefill API is reachable."""
+    from src.agents.bitrefill_agent import BitrefillAgent
+    agent = BitrefillAgent()
+    return await agent.ping()
+
+
+@register_tool("bitrefill.categories")
+async def tool_bitrefill_categories() -> Dict:
+    """Return the full Bitrefill product-type → categories map."""
+    from src.agents.bitrefill_agent import BitrefillAgent
+    agent = BitrefillAgent()
+    return await agent.get_categories()
+
+
+@register_tool("bitrefill.search")
+async def tool_bitrefill_search(
+    query: str,
+    country: Optional[str] = None,
+    category: Optional[str] = None,
+    limit: int = 10,
+) -> Dict:
+    """Search Bitrefill for gift cards, eSIMs, mobile top-ups, and more."""
+    from src.agents.bitrefill_agent import BitrefillAgent
+    agent = BitrefillAgent()
+    return await agent.search(query=query, country=country, category=category, limit=limit)
+
+
+@register_tool("bitrefill.detail")
+async def tool_bitrefill_detail(product_id: str) -> Dict:
+    """Get detailed information about a Bitrefill product by its ID."""
+    from src.agents.bitrefill_agent import BitrefillAgent
+    agent = BitrefillAgent()
+    return await agent.get_product_detail(product_id)
+
+
+@register_tool("bitrefill.create_invoice")
+async def tool_bitrefill_create_invoice(
+    product_id: str,
+    quantity: int = 1,
+    value: Optional[float] = None,
+    payment_method: str = "balance",
+) -> Dict:
+    """Create a Bitrefill invoice for a product (requires API credentials)."""
+    from src.agents.bitrefill_agent import make_bitrefill_agent
+    agent = make_bitrefill_agent()
+    product: Dict[str, Any] = {"product_id": product_id, "quantity": quantity}
+    if value is not None:
+        product["value"] = value
+    return await agent.bitrefill.create_invoice(products=[product], payment_method=payment_method)
+
+
+@register_tool("bitrefill.pay_invoice")
+async def tool_bitrefill_pay_invoice(invoice_id: str) -> Dict:
+    """Pay a Bitrefill invoice using the account balance (requires API credentials)."""
+    from src.agents.bitrefill_agent import make_bitrefill_agent
+    agent = make_bitrefill_agent()
+    return await agent.bitrefill.pay_invoice(invoice_id)
+
+
+@register_tool("bitrefill.get_invoices")
+async def tool_bitrefill_get_invoices(limit: int = 20) -> Dict:
+    """List recent Bitrefill invoices (requires API credentials)."""
+    from src.agents.bitrefill_agent import make_bitrefill_agent
+    agent = make_bitrefill_agent()
+    return await agent.get_invoices(limit=limit)
+
+
+@register_tool("bitrefill.get_orders")
+async def tool_bitrefill_get_orders(limit: int = 20) -> Dict:
+    """List recent Bitrefill orders (requires API credentials)."""
+    from src.agents.bitrefill_agent import make_bitrefill_agent
+    agent = make_bitrefill_agent()
+    return await agent.get_orders(limit=limit)
+
+
+@register_tool("bitrefill.get_order")
+async def tool_bitrefill_get_order(order_id: str) -> Dict:
+    """Get a specific Bitrefill order by ID (requires API credentials)."""
+    from src.agents.bitrefill_agent import make_bitrefill_agent
+    agent = make_bitrefill_agent()
+    return await agent.get_order(order_id)
+
+
+@register_tool("bitrefill.unseal_order")
+async def tool_bitrefill_unseal_order(order_id: str) -> Dict:
+    """Reveal codes and PINs for a Bitrefill order (requires API credentials)."""
+    from src.agents.bitrefill_agent import make_bitrefill_agent
+    agent = make_bitrefill_agent()
+    return await agent.unseal_order(order_id)
+
+
+@register_tool("bitrefill.purchase")
+async def tool_bitrefill_purchase(
+    product_id: str,
+    quantity: int = 1,
+    value: Optional[float] = None,
+    payment_method: str = "balance",
+    use_x402: bool = False,
+    x402_amount_usdx: Optional[float] = None,
+) -> Dict:
+    """End-to-end Bitrefill purchase: search → create invoice → pay via x402 or balance.
+
+    When use_x402 is True the agent first settles x402_amount_usdx via the
+    x402 protocol (USDC/stablecoin) before paying the invoice with balance.
+    Requires BITREFILL_API_ID, BITREFILL_API_SECRET, and (if use_x402) X402_PRIVATE_KEY.
+    """
+    from src.agents.bitrefill_agent import make_bitrefill_agent
+    agent = make_bitrefill_agent()
+    return await agent.purchase(
+        product_id=product_id,
+        quantity=quantity,
+        value=value,
+        payment_method=payment_method,
+        use_x402=use_x402,
+        x402_amount_usdx=x402_amount_usdx,
+    )
+
+
 # ── MCPToolkit Class ─────────────────────────────────────────────────────────────
 
 class MCPToolkit:
