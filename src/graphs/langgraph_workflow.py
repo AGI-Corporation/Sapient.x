@@ -18,7 +18,7 @@ try:
     from langgraph.graph import StateGraph, END
     from langgraph.checkpoint.memory import MemorySaver
     LANGGRAPH_AVAILABLE = True
-except ImportError:
+except ImportError:  # pragma: no cover
     LANGGRAPH_AVAILABLE = False
     StateGraph = None
     END = "__end__"
@@ -26,7 +26,7 @@ except ImportError:
 try:
     from langchain_core.messages import HumanMessage, AIMessage
     from langchain_openai import ChatOpenAI
-    LANGCHAIN_AVAILABLE = True
+    LANGCHAIN_AVAILABLE = True  # pragma: no cover
 except ImportError:
     LANGCHAIN_AVAILABLE = False
     ChatOpenAI = None

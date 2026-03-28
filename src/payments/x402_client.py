@@ -14,7 +14,7 @@ from typing import Any, Dict, Optional
 
 try:
     import httpx
-except ImportError:
+except ImportError:  # pragma: no cover
     httpx = None  # graceful degradation for environments without httpx
 
 

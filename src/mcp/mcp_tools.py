@@ -13,7 +13,7 @@ from datetime import datetime
 
 try:
     import httpx
-except ImportError:
+except ImportError:  # pragma: no cover
     httpx = None
 
 

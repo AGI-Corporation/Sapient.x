@@ -440,3 +440,45 @@ async def test_trade_agent_batch_transfer_handles_exception(parcel_agent):
 
     assert results[0]["success"] is False
     assert "transfer failed" in results[0]["error"]
+
+
+# ── Coverage gap fixes ────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_parcel_agent_receive_messages_with_items(parcel_agent):
+    """Test receive_messages drains items from the queue (covers line 90)."""
+    # Put two messages into the internal queue directly
+    await parcel_agent._message_queue.put({"type": "ping", "data": 1})
+    await parcel_agent._message_queue.put({"type": "pong", "data": 2})
+
+    msgs = await parcel_agent.receive_messages()
+    assert len(msgs) == 2
+    assert msgs[0] == {"type": "ping", "data": 1}
+    assert msgs[1] == {"type": "pong", "data": 2}
+    # Queue should be empty afterwards
+    assert parcel_agent._message_queue.empty()
+
+
+@pytest.mark.asyncio
+async def test_parcel_agent_run_processes_queued_messages(parcel_agent):
+    """Test that run() dispatches messages in the queue (covers line 152)."""
+    # Pre-load an 'optimize' message so the loop body executes _handle_message
+    mock_result = {
+        "assessment": "ok", "strategies": [], "chosen_strategy": None,
+        "actions_taken": [], "reflection": None, "score": 0.5,
+    }
+    await parcel_agent._message_queue.put({"type": "optimize", "context": {}})
+
+    with patch("src.graphs.langgraph_workflow.run_parcel_optimization", new_callable=AsyncMock) as mock_opt:
+        mock_opt.return_value = mock_result
+        with patch("asyncio.sleep", new_callable=AsyncMock):
+            await parcel_agent.run(cycles=1)
+
+
+def test_trade_agent_place_bid_expired_offer(trade_agent):
+    """Test place_bid returns error for an expired offer (covers line 68)."""
+    # Create an offer with zero TTL so it expires immediately
+    offer = trade_agent.create_offer("seller-1", "asset", 100.0, ttl_seconds=0)
+    result = trade_agent.place_bid(offer.offer_id, "bidder-1", 110.0)
+    assert result["success"] is False
+    assert result["error"] == "Offer expired"

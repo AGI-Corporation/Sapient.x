@@ -363,3 +363,59 @@ async def test_run_parcel_optimization_with_graph(sample_parcel_state):
 
     assert result["assessment"] == "Good"
     mock_graph.ainvoke.assert_called_once()
+
+
+# ── Coverage gap fixes ────────────────────────────────────────────────────────
+
+def test_get_llm_sentient_key_branch(monkeypatch):
+    """_get_llm returns a ChatOpenAI-like object for SENTIENT_API_KEY (line 62)."""
+    import src.graphs.langgraph_workflow as wf
+    monkeypatch.setenv("SENTIENT_API_KEY", "test-sentient-key")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    mock_chat_cls = MagicMock(return_value=MagicMock())
+    with (
+        patch.object(wf, "LANGCHAIN_AVAILABLE", True),
+        patch.object(wf, "ChatOpenAI", mock_chat_cls),
+    ):
+        result = wf._get_llm()
+
+    assert result is not None
+    mock_chat_cls.assert_called_once()
+    call_kwargs = mock_chat_cls.call_args.kwargs
+    assert call_kwargs["api_key"] == "test-sentient-key"
+
+
+def test_get_llm_openai_key_branch(monkeypatch):
+    """_get_llm returns a ChatOpenAI-like object for OPENAI_API_KEY (line 69)."""
+    import src.graphs.langgraph_workflow as wf
+    monkeypatch.delenv("SENTIENT_API_KEY", raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY", "test-openai-key")
+
+    mock_chat_cls = MagicMock(return_value=MagicMock())
+    with (
+        patch.object(wf, "LANGCHAIN_AVAILABLE", True),
+        patch.object(wf, "ChatOpenAI", mock_chat_cls),
+    ):
+        result = wf._get_llm()
+
+    assert result is not None
+    mock_chat_cls.assert_called_once_with(model="gpt-4o-mini", temperature=0.3)
+
+
+def test_get_graph_function_body():
+    """_get_graph() caches the graph in _GRAPH (covers lines 203-205)."""
+    import src.graphs.langgraph_workflow as wf
+
+    saved = wf._GRAPH
+    try:
+        # Reset so the if-branch executes
+        wf._GRAPH = None
+        graph1 = wf._get_graph()
+        # The graph should now be cached
+        assert wf._GRAPH is not None
+        # Second call should return the same cached object without rebuilding
+        graph2 = wf._get_graph()
+        assert graph1 is graph2
+    finally:
+        wf._GRAPH = saved
