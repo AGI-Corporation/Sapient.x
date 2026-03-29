@@ -1,8 +1,8 @@
 """Unit tests for LangGraph workflow optimization."""
 
+from unittest.mock import AsyncMock
+
 import pytest
-from unittest.mock import Mock, AsyncMock, patch, MagicMock
-from typing import Dict, Any, List
 
 
 class TestLangGraphWorkflow:
@@ -16,19 +16,19 @@ class TestLangGraphWorkflow:
                 {"id": "perceive", "type": "sensor"},
                 {"id": "analyze", "type": "reasoning"},
                 {"id": "decide", "type": "decision"},
-                {"id": "act", "type": "action"}
+                {"id": "act", "type": "action"},
             ],
             "edges": [
                 {"from": "perceive", "to": "analyze"},
                 {"from": "analyze", "to": "decide"},
-                {"from": "decide", "to": "act"}
-            ]
+                {"from": "decide", "to": "act"},
+            ],
         }
-        
+
         # TODO: Import and test actual LangGraph workflow
         # from src.graphs.langgraph_workflow import LangGraphWorkflow
         # workflow = LangGraphWorkflow(workflow_config)
-        
+
         assert workflow_config["name"] == "agent_decision_workflow"
         assert len(workflow_config["nodes"]) == 4
         assert len(workflow_config["edges"]) == 3
@@ -40,10 +40,10 @@ class TestLangGraphWorkflow:
             "edges": [
                 {"from": "check_balance", "to": "sufficient", "condition": "balance >= amount"},
                 {"from": "check_balance", "to": "insufficient", "condition": "balance < amount"},
-                {"from": "sufficient", "to": "execute"}
-            ]
+                {"from": "sufficient", "to": "execute"},
+            ],
         }
-        
+
         # TODO: Test conditional routing
         assert len(workflow["edges"]) == 3
         assert any(edge.get("condition") for edge in workflow["edges"])
@@ -54,23 +54,19 @@ class TestLangGraphWorkflow:
             "parallel_nodes": [
                 ["check_risk", "verify_compliance"],
                 ["check_liquidity", "check_gas_price"],
-                ["validate_contract", "check_signatures"]
+                ["validate_contract", "check_signatures"],
             ],
-            "join_node": "proceed_if_all_pass"
+            "join_node": "proceed_if_all_pass",
         }
-        
+
         # TODO: Test parallel execution
         assert len(parallel_config["parallel_nodes"]) == 3
         assert parallel_config["join_node"] == "proceed_if_all_pass"
 
     def test_workflow_node_state_management(self):
         """Test that workflow maintains state between nodes."""
-        initial_state = {
-            "agent_id": "agent-001",
-            "balance": 1000,
-            "active_trades": []
-        }
-        
+        initial_state = {"agent_id": "agent-001", "balance": 1000, "active_trades": []}
+
         # TODO: Test state transitions through workflow
         assert initial_state["agent_id"] == "agent-001"
         assert initial_state["balance"] == 1000
@@ -82,9 +78,9 @@ class TestLangGraphWorkflow:
         workflow_mock.execute.return_value = {
             "status": "completed",
             "nodes_executed": 4,
-            "duration_ms": 120
+            "duration_ms": 120,
         }
-        
+
         # TODO: Test actual async workflow
         result = await workflow_mock.execute()
         assert result["status"] == "completed"
@@ -98,32 +94,29 @@ class TestWorkflowOptimization:
         """Test optimization of sequential workflow."""
         original_workflow = {
             "nodes": ["A", "B", "C", "D"],
-            "edges": [{"from": "A", "to": "B"}, {"from": "B", "to": "C"}, {"from": "C", "to": "D"}]
+            "edges": [{"from": "A", "to": "B"}, {"from": "B", "to": "C"}, {"from": "C", "to": "D"}],
         }
-        
+
         # TODO: Implement optimization logic
         # optimizer = WorkflowOptimizer()
         # optimized = optimizer.optimize(original_workflow)
-        
+
         assert len(original_workflow["nodes"]) == 4
 
     def test_remove_redundant_nodes(self):
         """Test removal of redundant workflow nodes."""
         workflow = {
             "nodes": ["fetch_data", "validate", "fetch_data_again", "process"],
-            "redundant_nodes": ["fetch_data_again"]
+            "redundant_nodes": ["fetch_data_again"],
         }
-        
+
         # TODO: Implement redundancy detection
         assert "fetch_data_again" in workflow["redundant_nodes"]
 
     def test_parallelize_independent_nodes(self):
         """Test automatic parallelization of independent nodes."""
-        sequential = {
-            "nodes": ["check_A", "check_B", "check_C"],
-            "edges": []
-        }
-        
+        sequential = {"nodes": ["check_A", "check_B", "check_C"], "edges": []}
+
         # TODO: Detect independent nodes and parallelize
         # These nodes have no dependencies, should be parallelized
         assert len(sequential["nodes"]) == 3
@@ -134,9 +127,9 @@ class TestWorkflowOptimization:
         cache_config = {
             "enabled": True,
             "ttl_seconds": 300,
-            "cache_nodes": ["expensive_computation", "api_call"]
+            "cache_nodes": ["expensive_computation", "api_call"],
         }
-        
+
         # TODO: Test workflow result caching
         assert cache_config["enabled"] is True
         assert cache_config["ttl_seconds"] == 300
@@ -154,11 +147,11 @@ class TestAgentDecisionWorkflow:
                 "analyze_market_conditions",
                 "assess_risk",
                 "check_portfolio_impact",
-                "make_decision"
+                "make_decision",
             ],
-            "output": {"decision": "accept", "confidence": 0.85}
+            "output": {"decision": "accept", "confidence": 0.85},
         }
-        
+
         # TODO: Test trading workflow
         assert decision_workflow["output"]["decision"] == "accept"
         assert decision_workflow["output"]["confidence"] > 0.8
@@ -171,9 +164,9 @@ class TestAgentDecisionWorkflow:
             "evaluate_terms",
             "generate_counter_offer",
             "assess_response",
-            "finalize_or_continue"
+            "finalize_or_continue",
         ]
-        
+
         # TODO: Test negotiation workflow
         assert len(negotiation_steps) == 5
 
@@ -184,9 +177,9 @@ class TestAgentDecisionWorkflow:
             "market_volatility": 0.15,
             "counterparty_credit": 0.05,
             "liquidity_risk": 0.10,
-            "overall_risk_score": 0.30
+            "overall_risk_score": 0.30,
         }
-        
+
         # TODO: Calculate risk score using workflow
         assert risk_factors["overall_risk_score"] < 0.5  # Acceptable risk
 
@@ -201,10 +194,10 @@ class TestWorkflowIntegration:
             "nodes": [
                 {"id": "call_tool_1", "tool": "get_market_data"},
                 {"id": "call_tool_2", "tool": "send_message"},
-                {"id": "process_results", "type": "computation"}
+                {"id": "process_results", "type": "computation"},
             ]
         }
-        
+
         # TODO: Test MCP tool integration
         assert len(workflow_with_tools["nodes"]) == 3
 
@@ -214,9 +207,9 @@ class TestWorkflowIntegration:
         model_config = {
             "model_name": "sentient-foundation",
             "reasoning_steps": ["observe", "reason", "conclude"],
-            "temperature": 0.7
+            "temperature": 0.7,
         }
-        
+
         # TODO: Test model integration in workflow
         assert model_config["model_name"] == "sentient-foundation"
 
@@ -226,9 +219,9 @@ class TestWorkflowIntegration:
         error_config = {
             "retry_policy": {"max_retries": 3, "backoff": "exponential"},
             "fallback_node": "error_handler",
-            "circuit_breaker": {"threshold": 5, "timeout": 60}
+            "circuit_breaker": {"threshold": 5, "timeout": 60},
         }
-        
+
         # TODO: Test error handling
         assert error_config["retry_policy"]["max_retries"] == 3
 
@@ -240,9 +233,9 @@ class TestWorkflowIntegration:
             "nodes_executed": 8,
             "nodes_failed": 0,
             "cache_hits": 3,
-            "cache_misses": 5
+            "cache_misses": 5,
         }
-        
+
         # TODO: Test metrics collection
         assert metrics["nodes_failed"] == 0
         assert metrics["execution_time_ms"] < 200
@@ -257,9 +250,9 @@ class TestWorkflowValidation:
             "nodes": [{"id": "start"}, {"id": "end"}],
             "edges": [{"from": "start", "to": "end"}],
             "start_node": "start",
-            "end_nodes": ["end"]
+            "end_nodes": ["end"],
         }
-        
+
         # TODO: Implement validation
         assert "start_node" in valid_workflow
         assert "end_nodes" in valid_workflow
@@ -271,20 +264,17 @@ class TestWorkflowValidation:
             "edges": [
                 {"from": "A", "to": "B"},
                 {"from": "B", "to": "C"},
-                {"from": "C", "to": "A"}  # Creates cycle
-            ]
+                {"from": "C", "to": "A"},  # Creates cycle
+            ],
         }
-        
+
         # TODO: Implement cycle detection
         assert len(workflow_with_cycle["edges"]) == 3
 
     def test_validate_edge_connections(self):
         """Test that all edges connect to existing nodes."""
-        workflow = {
-            "nodes": [{"id": "A"}, {"id": "B"}],
-            "edges": [{"from": "A", "to": "B"}]
-        }
-        
+        workflow = {"nodes": [{"id": "A"}, {"id": "B"}], "edges": [{"from": "A", "to": "B"}]}
+
         # TODO: Validate all edges
         node_ids = [node["id"] for node in workflow["nodes"]]
         for edge in workflow["edges"]:
@@ -296,21 +286,15 @@ class TestWorkflowValidation:
         schema = {
             "input_schema": {
                 "type": "object",
-                "properties": {
-                    "agent_id": {"type": "string"},
-                    "action": {"type": "string"}
-                },
-                "required": ["agent_id", "action"]
+                "properties": {"agent_id": {"type": "string"}, "action": {"type": "string"}},
+                "required": ["agent_id", "action"],
             },
             "output_schema": {
                 "type": "object",
-                "properties": {
-                    "result": {"type": "string"},
-                    "status": {"type": "string"}
-                }
-            }
+                "properties": {"result": {"type": "string"}, "status": {"type": "string"}},
+            },
         }
-        
+
         # TODO: Validate schemas
         assert "input_schema" in schema
         assert "output_schema" in schema

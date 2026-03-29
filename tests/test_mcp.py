@@ -1,11 +1,11 @@
 """Tests for MCP (Model Context Protocol) toolkit."""
 
-import pytest
-from unittest.mock import Mock, AsyncMock, patch
-from src.mcp.mcp_tools import MCPToolkit
+from unittest.mock import AsyncMock, patch
 
+import pytest
 
 # ── MCPToolkit Tests ──────────────────────────────────────────────────────────────
+
 
 def test_mcp_toolkit_creation(mcp_toolkit):
     """Test MCPToolkit initialization."""
@@ -14,12 +14,13 @@ def test_mcp_toolkit_creation(mcp_toolkit):
     assert mcp_toolkit.local_only is True
 
 
-def test_mcp_toolkit_list_tools(mcp_toolkit):
+@pytest.mark.asyncio
+async def test_mcp_toolkit_list_tools(mcp_toolkit):
     """Test listing available MCP tools."""
-    tools = mcp_toolkit.list_tools()
+    tools = await mcp_toolkit.list_tools()
     assert isinstance(tools, list)
     assert len(tools) > 0
-    
+
     # Check tool structure
     for tool in tools:
         assert "name" in tool
@@ -31,10 +32,9 @@ def test_mcp_toolkit_list_tools(mcp_toolkit):
 async def test_mcp_send_message(mcp_toolkit):
     """Test sending MCP message to another agent."""
     result = await mcp_toolkit.send_message(
-        target_id="agent-002",
-        content={"type": "greeting", "message": "Hello"}
+        target_id="agent-002", content={"type": "greeting", "message": "Hello"}
     )
-    
+
     assert result["success"] is True
     assert "message_id" in result
 
@@ -45,13 +45,14 @@ async def test_mcp_receive_message(mcp_toolkit):
     # Simulate incoming message
     mock_message = {
         "from": "agent-002",
-        "content": {"type": "response", "data": "test"},
-        "timestamp": "2026-03-07T20:00:00Z"
+        "to": "test-mcp-001",
+        "payload": {"type": "response", "data": "test"},
+        "sent_at": "2026-03-07T20:00:00Z",
     }
-    
-    with patch.object(mcp_toolkit, '_poll_messages', new_callable=AsyncMock) as mock_poll:
+
+    with patch.object(mcp_toolkit, "_poll_messages", new_callable=AsyncMock) as mock_poll:
         mock_poll.return_value = [mock_message]
-        
+
         messages = await mcp_toolkit.receive_messages()
         assert len(messages) == 1
         assert messages[0]["from"] == "agent-002"
@@ -61,10 +62,9 @@ async def test_mcp_receive_message(mcp_toolkit):
 async def test_mcp_call_tool(mcp_toolkit):
     """Test calling an MCP tool."""
     result = await mcp_toolkit.call_tool(
-        tool_name="get_location_data",
-        parameters={"lat": 37.7749, "lng": -122.4194}
+        tool_name="get_location_data", parameters={"lat": 37.7749, "lng": -122.4194}
     )
-    
+
     assert result["success"] is True
     assert "data" in result
 
@@ -72,20 +72,21 @@ async def test_mcp_call_tool(mcp_toolkit):
 @pytest.mark.asyncio
 async def test_mcp_register_custom_tool(mcp_toolkit):
     """Test registering a custom tool."""
-    def custom_tool(param1: str, param2: int) -> dict:
+
+    async def custom_tool(param1: str, param2: int) -> dict:
         return {"result": f"{param1}-{param2}"}
-    
+
     mcp_toolkit.register_tool(
         name="custom_tool",
         func=custom_tool,
         description="A custom test tool",
         parameters={
             "param1": {"type": "string", "required": True},
-            "param2": {"type": "integer", "required": True}
-        }
+            "param2": {"type": "integer", "required": True},
+        },
     )
-    
-    tools = mcp_toolkit.list_tools()
+
+    tools = await mcp_toolkit.list_tools()
     tool_names = [t["name"] for t in tools]
     assert "custom_tool" in tool_names
 
@@ -94,15 +95,14 @@ async def test_mcp_register_custom_tool(mcp_toolkit):
 async def test_mcp_broadcast_message(mcp_toolkit):
     """Test broadcasting message to multiple agents."""
     target_ids = ["agent-002", "agent-003", "agent-004"]
-    
-    with patch.object(mcp_toolkit, 'send_message', new_callable=AsyncMock) as mock_send:
+
+    with patch.object(mcp_toolkit, "send_message", new_callable=AsyncMock) as mock_send:
         mock_send.return_value = {"success": True, "message_id": "msg-123"}
-        
+
         results = await mcp_toolkit.broadcast(
-            target_ids=target_ids,
-            content={"type": "announcement", "message": "Update available"}
+            target_ids=target_ids, content={"type": "announcement", "message": "Update available"}
         )
-        
+
         assert len(results) == 3
         assert all(r["success"] for r in results)
         assert mock_send.call_count == 3
@@ -113,12 +113,12 @@ def test_mcp_validate_message_format(mcp_toolkit):
     valid_message = {
         "from": "agent-001",
         "to": "agent-002",
-        "content": {"type": "test"},
-        "timestamp": "2026-03-07T20:00:00Z"
+        "payload": {"type": "test"},
+        "sent_at": "2026-03-07T20:00:00Z",
     }
-    
+
     assert mcp_toolkit.validate_message(valid_message) is True
-    
+
     invalid_message = {"from": "agent-001"}  # Missing required fields
     assert mcp_toolkit.validate_message(invalid_message) is False
 
@@ -126,11 +126,8 @@ def test_mcp_validate_message_format(mcp_toolkit):
 @pytest.mark.asyncio
 async def test_mcp_tool_error_handling(mcp_toolkit):
     """Test error handling in tool calls."""
-    result = await mcp_toolkit.call_tool(
-        tool_name="nonexistent_tool",
-        parameters={}
-    )
-    
+    result = await mcp_toolkit.call_tool(tool_name="nonexistent_tool", parameters={})
+
     assert result["success"] is False
     assert "error" in result
     assert "not found" in result["error"].lower()
@@ -141,11 +138,8 @@ async def test_mcp_message_queue(mcp_toolkit):
     """Test message queueing system."""
     # Send multiple messages
     for i in range(5):
-        await mcp_toolkit.send_message(
-            target_id=f"agent-{i:03d}",
-            content={"index": i}
-        )
-    
+        await mcp_toolkit.send_message(target_id=f"agent-{i:03d}", content={"index": i})
+
     # Check queue status
     queue_size = mcp_toolkit.get_queue_size()
     assert queue_size >= 0
@@ -157,14 +151,14 @@ def test_mcp_tool_parameter_validation(mcp_toolkit):
         "name": "test_tool",
         "parameters": {
             "required_param": {"type": "string", "required": True},
-            "optional_param": {"type": "integer", "required": False}
-        }
+            "optional_param": {"type": "integer", "required": False},
+        },
     }
-    
+
     # Valid parameters
     valid_params = {"required_param": "value"}
     assert mcp_toolkit.validate_parameters(tool_spec, valid_params) is True
-    
+
     # Missing required parameter
     invalid_params = {"optional_param": 42}
     assert mcp_toolkit.validate_parameters(tool_spec, invalid_params) is False
@@ -174,7 +168,7 @@ def test_mcp_tool_parameter_validation(mcp_toolkit):
 async def test_mcp_connection_status(mcp_toolkit):
     """Test MCP connection status checks."""
     status = await mcp_toolkit.get_connection_status()
-    
+
     assert "connected" in status
     assert "agent_id" in status
     assert status["agent_id"] == "test-mcp-001"
@@ -183,19 +177,17 @@ async def test_mcp_connection_status(mcp_toolkit):
 @pytest.mark.asyncio
 async def test_mcp_retry_mechanism(mcp_toolkit):
     """Test automatic retry on failed messages."""
-    with patch.object(mcp_toolkit, '_send_raw', new_callable=AsyncMock) as mock_send:
+    with patch.object(mcp_toolkit, "_send_raw", new_callable=AsyncMock) as mock_send:
         # First two calls fail, third succeeds
         mock_send.side_effect = [
             Exception("Network error"),
             Exception("Network error"),
-            {"success": True, "message_id": "msg-123"}
+            {"success": True, "message_id": "msg-123"},
         ]
-        
+
         result = await mcp_toolkit.send_message(
-            target_id="agent-002",
-            content={"test": "data"},
-            max_retries=3
+            target_id="agent-002", content={"test": "data"}, max_retries=3
         )
-        
+
         assert result["success"] is True
         assert mock_send.call_count == 3

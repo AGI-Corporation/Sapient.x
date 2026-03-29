@@ -5,11 +5,12 @@ All request/response bodies are validated here.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 from pydantic import BaseModel, Field, field_validator
 
-
 # ── Location ───────────────────────────────────────────────────────────────
+
 
 class Location(BaseModel):
     lat: float = Field(..., ge=-90, le=90, description="Latitude")
@@ -19,10 +20,11 @@ class Location(BaseModel):
 
 # ── Parcel ─────────────────────────────────────────────────────────────────
 
+
 class ParcelCreate(BaseModel):
     owner_address: str = Field(..., description="Wallet address of the parcel owner")
     location: Location
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("owner_address")
     @classmethod
@@ -37,33 +39,34 @@ class ParcelRead(BaseModel):
     owner: str
     location: Location
     balance_usdx: float
-    metadata: Dict[str, Any]
+    metadata: dict[str, Any]
     active: bool
     last_updated: str
 
 
 class ParcelUpdate(BaseModel):
-    metadata: Optional[Dict[str, Any]] = None
-    active: Optional[bool] = None
+    metadata: dict[str, Any] | None = None
+    active: bool | None = None
 
 
 # ── Trades ─────────────────────────────────────────────────────────────────
+
 
 class TradeRequest(BaseModel):
     from_parcel_id: str
     to_parcel_id: str
     amount_usdx: float = Field(..., gt=0, description="Amount in USDx (must be positive)")
     trade_type: str = Field("transfer", description="transfer | lease | data_access")
-    contract_terms: Optional[Dict[str, Any]] = None
+    contract_terms: dict[str, Any] | None = None
 
 
 class TradeResponse(BaseModel):
     success: bool
-    tx_id: Optional[str] = None
+    tx_id: str | None = None
     amount_usdx: float
     from_parcel_id: str
     to_parcel_id: str
-    error: Optional[str] = None
+    error: str | None = None
 
 
 class OfferCreate(BaseModel):
@@ -81,41 +84,44 @@ class BidRequest(BaseModel):
 
 # ── Contracts ──────────────────────────────────────────────────────────────
 
+
 class ContractRequest(BaseModel):
     contract_type: str = Field(..., description="parcel_lease | data_access | custom")
     party_a: str
     party_b: str
-    terms: Dict[str, Any]
+    terms: dict[str, Any]
 
 
 class ContractResponse(BaseModel):
     contract_id: str
     contract_type: str
     status: str
-    parties: Dict[str, str]
-    terms: Dict[str, Any]
+    parties: dict[str, str]
+    terms: dict[str, Any]
     created_at: str
-    tx_hash: Optional[str] = None
+    tx_hash: str | None = None
 
 
 # ── Optimization ────────────────────────────────────────────────────────────
 
+
 class OptimizeRequest(BaseModel):
     parcel_id: str
-    context: Dict[str, Any] = Field(default_factory=dict)
+    context: dict[str, Any] = Field(default_factory=dict)
 
 
 class OptimizeResponse(BaseModel):
     parcel_id: str
-    assessment: Optional[str] = None
-    strategies: List[str] = []
-    chosen_strategy: Optional[str] = None
-    actions_taken: List[Dict[str, Any]] = []
-    reflection: Optional[str] = None
+    assessment: str | None = None
+    strategies: list[str] = []
+    chosen_strategy: str | None = None
+    actions_taken: list[dict[str, Any]] = []
+    reflection: str | None = None
     score: float = 0.0
 
 
 # ── Payments ──────────────────────────────────────────────────────────────
+
 
 class DepositRequest(BaseModel):
     parcel_id: str
@@ -132,27 +138,29 @@ class PaymentStreamRequest(BaseModel):
 
 # ── MCP Messages ───────────────────────────────────────────────────────────
 
+
 class MCPMessage(BaseModel):
     from_parcel_id: str
     to_parcel_id: str
     msg_type: str = Field(..., description="trade_request | contract_offer | optimize | custom")
-    payload: Dict[str, Any]
+    payload: dict[str, Any]
 
 
 class MCPToolCall(BaseModel):
     tool_name: str
-    arguments: Dict[str, Any] = Field(default_factory=dict)
+    arguments: dict[str, Any] = Field(default_factory=dict)
 
 
 # ── Generic responses ───────────────────────────────────────────────────────
 
+
 class SuccessResponse(BaseModel):
     success: bool = True
     message: str = "OK"
-    data: Optional[Any] = None
+    data: Any | None = None
 
 
 class ErrorResponse(BaseModel):
     success: bool = False
     error: str
-    detail: Optional[str] = None
+    detail: str | None = None

@@ -8,22 +8,22 @@ Agents can:
   - Optimize via LangGraph + Sentient Foundation models
 """
 
-import uuid
 import asyncio
-from typing import Optional, Dict, Any
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Any
 
-from src.payments.x402_client import X402Client
 from src.mcp.mcp_tools import MCPToolkit
+from src.payments.x402_client import X402Client
 
 
 @dataclass
 class ParcelState:
     parcel_id: str
     owner_address: str
-    location: Dict[str, float]  # {lat, lng, alt}
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    location: dict[str, float]  # {lat, lng, alt}
+    metadata: dict[str, Any] = field(default_factory=dict)
     balance_usdx: float = 0.0
     active: bool = True
     last_updated: str = field(default_factory=lambda: datetime.utcnow().isoformat())
@@ -34,10 +34,10 @@ class ParcelAgent:
 
     def __init__(
         self,
-        parcel_id: Optional[str] = None,
+        parcel_id: str | None = None,
         owner_address: str = "",
-        location: Optional[Dict[str, float]] = None,
-        wallet_private_key: Optional[str] = None,
+        location: dict[str, float] | None = None,
+        wallet_private_key: str | None = None,
     ):
         self.parcel_id = parcel_id or str(uuid.uuid4())
         self.owner_address = owner_address
@@ -58,7 +58,7 @@ class ParcelAgent:
         self.state.metadata[key] = value
         self.state.last_updated = datetime.utcnow().isoformat()
 
-    def get_state(self) -> Dict[str, Any]:
+    def get_state(self) -> dict[str, Any]:
         """Return the current parcel state as a dict."""
         return {
             "parcel_id": self.state.parcel_id,
@@ -72,7 +72,7 @@ class ParcelAgent:
 
     # ── Communication ─────────────────────────────────────────────────────────
 
-    async def send_message(self, target_parcel_id: str, content: Dict[str, Any]) -> Dict:
+    async def send_message(self, target_parcel_id: str, content: dict[str, Any]) -> dict:
         """Send an MCP message to another parcel agent."""
         return await self.mcp.send(
             to=target_parcel_id,
@@ -92,7 +92,7 @@ class ParcelAgent:
 
     # ── Trading ───────────────────────────────────────────────────────────────
 
-    async def deposit(self, amount_usdx: float) -> Dict:
+    async def deposit(self, amount_usdx: float) -> dict:
         """Deposit USDx into the parcel wallet via x402."""
         result = await self.x402.deposit(amount=amount_usdx)
         if result.get("success"):
@@ -104,8 +104,8 @@ class ParcelAgent:
         counterparty_id: str,
         amount_usdx: float,
         trade_type: str = "transfer",
-        contract_terms: Optional[Dict] = None,
-    ) -> Dict:
+        contract_terms: dict | None = None,
+    ) -> dict:
         """Execute a USDx trade with another parcel agent."""
         if self.state.balance_usdx < amount_usdx:
             return {"success": False, "error": "Insufficient USDx balance"}
@@ -120,9 +120,7 @@ class ParcelAgent:
             self.state.balance_usdx -= amount_usdx
         return result
 
-    async def sign_contract(
-        self, counterparty_id: str, contract: Dict[str, Any]
-    ) -> Dict:
+    async def sign_contract(self, counterparty_id: str, contract: dict[str, Any]) -> dict:
         """Sign a smart contract with another parcel agent."""
         return await self.x402.sign_contract(
             contract=contract,
@@ -132,7 +130,7 @@ class ParcelAgent:
 
     # ── Optimization ──────────────────────────────────────────────────────────
 
-    async def optimize(self, context: Optional[Dict] = None) -> Dict:
+    async def optimize(self, context: dict | None = None) -> dict:
         """Run the LangGraph optimization workflow for this parcel."""
         from src.graphs.langgraph_workflow import run_parcel_optimization
 
@@ -155,19 +153,23 @@ class ParcelAgent:
             if cycles and count >= cycles:
                 break
 
-    async def _handle_message(self, msg: Dict) -> None:
+    async def _handle_message(self, msg: dict) -> None:
         """Route incoming MCP messages to appropriate handlers."""
-        msg_type = msg.get("type", "unknown")
+        # Handle enveloped messages from MCPToolkit/Route.X
+        data = msg.get("payload", msg)
+        msg_type = data.get("type", "unknown")
+        sender = data.get("from", msg.get("from", "unknown"))
+
         if msg_type == "trade_request":
             await self.trade(
-                counterparty_id=msg["from"],
-                amount_usdx=msg["amount"],
-                trade_type=msg.get("trade_type", "transfer"),
+                counterparty_id=sender,
+                amount_usdx=data["amount"],
+                trade_type=data.get("trade_type", "transfer"),
             )
         elif msg_type == "contract_offer":
             await self.sign_contract(
-                counterparty_id=msg["from"],
-                contract=msg["contract"],
+                counterparty_id=sender,
+                contract=data["contract"],
             )
         elif msg_type == "optimize":
             await self.optimize(context=msg.get("context"))

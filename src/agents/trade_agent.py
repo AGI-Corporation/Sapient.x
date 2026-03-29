@@ -5,8 +5,8 @@ Built on top of ParcelAgent with added auction and batch-trade logic.
 """
 
 import asyncio
-from typing import Dict, List, Optional, Any
 from datetime import datetime
+from typing import Any
 
 
 class TradeOffer:
@@ -23,16 +23,18 @@ class TradeOffer:
         self.asset = asset
         self.amount_usdx = amount_usdx
         self.expires_at = datetime.utcnow().timestamp() + ttl_seconds
-        self.bids: List[Dict] = []
-        self.accepted: Optional[Dict] = None
+        self.bids: list[dict] = []
+        self.accepted: dict | None = None
 
     def is_expired(self) -> bool:
         return datetime.utcnow().timestamp() > self.expires_at
 
     def add_bid(self, bidder_id: str, bid_amount: float) -> None:
-        self.bids.append({"bidder": bidder_id, "amount": bid_amount, "ts": datetime.utcnow().isoformat()})
+        self.bids.append(
+            {"bidder": bidder_id, "amount": bid_amount, "ts": datetime.utcnow().isoformat()}
+        )
 
-    def best_bid(self) -> Optional[Dict]:
+    def best_bid(self) -> dict | None:
         if not self.bids:
             return None
         return max(self.bids, key=lambda b: b["amount"])
@@ -43,8 +45,8 @@ class TradeAgent:
 
     def __init__(self, agent_id: str):
         self.agent_id = agent_id
-        self.offers: Dict[str, TradeOffer] = {}
-        self.trade_history: List[Dict] = []
+        self.offers: dict[str, TradeOffer] = {}
+        self.trade_history: list[dict] = []
 
     # ── Offer Management ───────────────────────────────────────────────────
 
@@ -60,7 +62,7 @@ class TradeAgent:
         self.offers[offer_id] = offer
         return offer
 
-    def place_bid(self, offer_id: str, bidder_id: str, bid_amount: float) -> Dict:
+    def place_bid(self, offer_id: str, bidder_id: str, bid_amount: float) -> dict:
         offer = self.offers.get(offer_id)
         if not offer:
             return {"success": False, "error": "Offer not found"}
@@ -69,7 +71,7 @@ class TradeAgent:
         offer.add_bid(bidder_id, bid_amount)
         return {"success": True, "offer_id": offer_id, "bid": bid_amount}
 
-    def close_offer(self, offer_id: str) -> Dict:
+    def close_offer(self, offer_id: str) -> dict:
         offer = self.offers.get(offer_id)
         if not offer:
             return {"success": False, "error": "Offer not found"}
@@ -93,8 +95,8 @@ class TradeAgent:
     async def batch_transfer(
         self,
         sender_agent: Any,
-        recipients: List[Dict],  # [{"parcel_id": ..., "amount": ...}]
-    ) -> List[Dict]:
+        recipients: list[dict],  # [{"parcel_id": ..., "amount": ...}]
+    ) -> list[dict]:
         """Execute multiple USDx transfers concurrently."""
         tasks = [
             sender_agent.trade(
@@ -105,10 +107,7 @@ class TradeAgent:
             for r in recipients
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        return [
-            r if isinstance(r, dict) else {"success": False, "error": str(r)}
-            for r in results
-        ]
+        return [r if isinstance(r, dict) else {"success": False, "error": str(r)} for r in results]
 
     # ── Contract Templates ─────────────────────────────────────────────────
 
@@ -119,7 +118,7 @@ class TradeAgent:
         parcel_id: str,
         monthly_usdx: float,
         duration_months: int,
-    ) -> Dict:
+    ) -> dict:
         return {
             "type": "parcel_lease",
             "version": "1.0",
@@ -140,7 +139,7 @@ class TradeAgent:
         consumer_id: str,
         dataset: str,
         price_usdx: float,
-    ) -> Dict:
+    ) -> dict:
         return {
             "type": "data_access",
             "version": "1.0",
@@ -157,7 +156,7 @@ class TradeAgent:
 
     # ── History ───────────────────────────────────────────────────────────────
 
-    def get_history(self, limit: int = 50) -> List[Dict]:
+    def get_history(self, limit: int = 50) -> list[dict]:
         return self.trade_history[-limit:]
 
     def volume_usdx(self) -> float:
