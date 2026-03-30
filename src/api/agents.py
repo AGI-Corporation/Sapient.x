@@ -12,6 +12,8 @@ from src.agents.parcel_agent import ParcelAgent
 
 router = APIRouter()
 
+_ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
+
 # In-memory registry of running agents; keyed by agent_id (≠ parcel_id)
 _agents: dict[str, dict[str, Any]] = {}
 
@@ -33,7 +35,7 @@ def _make_record(agent_id: str, parcel: ParcelAgent, config: dict[str, Any]) -> 
 @router.post("", status_code=201)
 async def create_agent(body: dict[str, Any]) -> dict[str, Any]:
     parcel_id = body.get("parcel_id", "")
-    owner = body.get("wallet_address", "0x0000000000000000000000000000000000000000")
+    owner = body.get("wallet_address", _ZERO_ADDRESS)
     if not parcel_id:
         raise HTTPException(status_code=422, detail=[{"msg": "parcel_id is required"}])
 

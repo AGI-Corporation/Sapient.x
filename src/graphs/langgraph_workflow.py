@@ -14,6 +14,10 @@ Workflow steps:
 from datetime import datetime
 from typing import Any, TypedDict
 
+# Score produced by the fallback reflect_node when no LLM is available.
+# Must be ≥ the 0.8 threshold in should_continue so the graph terminates.
+_FALLBACK_SUCCESS_SCORE = 0.85
+
 try:
     from langgraph.checkpoint.memory import MemorySaver
     from langgraph.graph import END, StateGraph
@@ -168,7 +172,7 @@ Respond in format: SCORE: 0.X | REFLECTION: <text>"""
             if "REFLECTION:" in text:
                 reflection = text.split("REFLECTION:")[1].strip()
     else:
-        score = 0.85 if state.get("chosen_strategy") else 0.3
+        score = _FALLBACK_SUCCESS_SCORE if state.get("chosen_strategy") else 0.3
         reflection = f"Executed: '{state.get('chosen_strategy', 'none')}'. Iteration {iteration} complete."
 
     return {**state, "score": score, "reflection": reflection, "iteration": iteration}

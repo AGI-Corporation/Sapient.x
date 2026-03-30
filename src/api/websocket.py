@@ -49,19 +49,20 @@ class ConnectionManager:
 
     async def broadcast(self, message: dict[str, Any]) -> None:
         """Broadcast a message to all connected clients."""
-        tasks = []
-        for agent_id, connections in list(self.active_connections.items()):
-            for ws in list(connections):
-                tasks.append(ws.send_json(message))
-        if tasks:
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-            # Clean up failed connections
-            idx = 0
-            for agent_id, connections in list(self.active_connections.items()):
-                for ws in list(connections):
-                    if idx < len(results) and isinstance(results[idx], Exception):
-                        self.disconnect(ws, agent_id)
-                    idx += 1
+        # Build a flat list of (agent_id, ws) pairs for clean error handling
+        pairs: list[tuple[str, WebSocket]] = [
+            (agent_id, ws)
+            for agent_id, connections in list(self.active_connections.items())
+            for ws in list(connections)
+        ]
+        if not pairs:
+            return
+        results = await asyncio.gather(
+            *(ws.send_json(message) for _, ws in pairs), return_exceptions=True
+        )
+        for (agent_id, ws), result in zip(pairs, results):
+            if isinstance(result, Exception):
+                self.disconnect(ws, agent_id)
 
 
 manager = ConnectionManager()
