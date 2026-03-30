@@ -170,7 +170,7 @@ Respond in format: SCORE: 0.X | REFLECTION: <text>"""
         score = 0.7 if state.get("chosen_strategy") else 0.3
         reflection = f"Executed: '{state.get('chosen_strategy', 'none')}'. Iteration {state.get('iteration', 0)} complete."
 
-    return {**state, "score": score, "reflection": reflection}
+    return {**state, "score": score, "reflection": reflection, "iteration": state.get("iteration", 0) + 1}
 
 
 def should_continue(state: ParcelOptState) -> str:
