@@ -23,11 +23,22 @@ class ContractManager:
         party_b: str,
         contract_data: dict[str, Any],
     ) -> str:
-        """Create a new contract proposal. Returns the contract ID."""
-        terms = contract_data.get("terms", contract_data)
-        price = terms.get("price", 0)
-        if isinstance(price, (int, float)) and price < 0:
-            raise ValueError("Invalid contract terms: price cannot be negative")
+        """Create a new contract proposal. Returns the contract ID.
+
+        ``contract_data`` may contain a nested ``"terms"`` dict or provide
+        fields directly (e.g. ``{"price": 100.0}``).
+        """
+        terms: dict[str, Any] = contract_data.get("terms")  # type: ignore[assignment]
+        if terms is None:
+            # Support flat dict where fields like "price" are top-level
+            terms = {k: v for k, v in contract_data.items() if k != "terms"}
+
+        price = terms.get("price")
+        if price is not None:
+            if not isinstance(price, (int, float)):
+                raise ValueError("Invalid contract terms: price must be a number")
+            if price < 0:
+                raise ValueError("Invalid contract terms: price cannot be negative")
 
         contract_id = str(uuid.uuid4())
         self._contracts[contract_id] = {

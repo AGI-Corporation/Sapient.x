@@ -324,7 +324,7 @@ class TestPaymentEndpoints:
 
     def test_get_balance(self):
         """GET /api/v1/payments/balance/{address} returns a balance."""
-        address = "0x742d35Cc6634C0532925a3b8440000000000000f"  # valid 42-char address
+        address = "0x742d35Cc6634C0532925a3b8440000000000000f"  # valid 0x + 40 hex chars
         response = client.get(f"/api/v1/payments/balance/{address}")
         assert response.status_code == 200
         assert "balance_usdx" in response.json()

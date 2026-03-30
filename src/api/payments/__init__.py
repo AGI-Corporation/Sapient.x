@@ -31,7 +31,7 @@ async def transfer(
 ) -> dict[str, Any]:
     """Transfer USDx to an address via the x402 protocol."""
     if amount_usdx <= 0:
-        raise HTTPException(status_code=400, detail="amount_usdx must be positive")
+        raise HTTPException(status_code=400, detail="Transfer amount must be positive")
     result = await _CLIENT.transfer(to_address=to_address, amount=amount_usdx, memo=memo)
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("error", "Transfer failed"))

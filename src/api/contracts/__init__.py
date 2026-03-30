@@ -23,8 +23,7 @@ async def create_contract(body: ContractRequest) -> dict[str, Any]:
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    contract = _CONTRACT_MANAGER.get(contract_id)
-    return {**contract, "id": contract_id}
+    return _CONTRACT_MANAGER.get(contract_id)  # type: ignore[return-value]
 
 
 @router.get("/{contract_id}")
@@ -33,7 +32,7 @@ async def get_contract(contract_id: str) -> dict[str, Any]:
     contract = _CONTRACT_MANAGER.get(contract_id)
     if contract is None:
         raise HTTPException(status_code=404, detail=f"Contract '{contract_id}' not found")
-    return {**contract, "id": contract_id}
+    return contract
 
 
 @router.post("/{contract_id}/sign")
@@ -69,7 +68,4 @@ async def execute_contract(contract_id: str) -> dict[str, Any]:
 @router.get("/")
 async def list_contracts(party: str | None = None, status: str | None = None) -> list[dict[str, Any]]:
     """List all contracts, optionally filtered."""
-    return [
-        {**c, "id": c["contract_id"]}
-        for c in _CONTRACT_MANAGER.list_contracts(party=party, status=status)
-    ]
+    return [c for c in _CONTRACT_MANAGER.list_contracts(party=party, status=status)]
