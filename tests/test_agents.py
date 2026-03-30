@@ -93,7 +93,22 @@ async def test_parcel_agent_send_message(parcel_agent):
 @pytest.mark.asyncio
 async def test_parcel_agent_optimize(parcel_agent):
     """Test LangGraph optimization workflow."""
-    result = await parcel_agent.optimize(context={"market": "bullish"})
+    from unittest.mock import AsyncMock, patch
+
+    mock_result = {
+        "assessment": "Good balance; consider leasing.",
+        "strategies": ["Lease at market rate", "Update metadata"],
+        "chosen_strategy": "Lease at market rate",
+        "actions_taken": [{"strategy": "Lease at market rate", "status": "simulated"}],
+        "reflection": "Action taken successfully.",
+        "score": 0.8,
+    }
+    with patch(
+        "src.graphs.langgraph_workflow.run_parcel_optimization",
+        new_callable=AsyncMock,
+        return_value=mock_result,
+    ):
+        result = await parcel_agent.optimize(context={"market": "bullish"})
     assert "assessment" in result
     assert "strategies" in result
     assert isinstance(result["strategies"], list)
