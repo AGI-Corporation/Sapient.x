@@ -10,6 +10,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src import __version__
 from src.api import contracts, mcp, parcels, payments, trades
+from src.api.agents import router as agents_router
+from src.api.nanda import router as nanda_router
+from src.api.websocket import router as ws_router
 
 # ── Global state ──────────────────────────────────────────────────────────────
 
@@ -29,7 +32,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="Web4AGI API",
-    description="Metaverse Parcel Digital Agents with MCP, x402, and LangGraph",
+    description="Metaverse Parcel Digital Agents with MCP, x402, NANDA, and LangGraph",
     version=__version__,
     lifespan=lifespan,
 )
@@ -53,6 +56,9 @@ app.include_router(trades.router, prefix="/api/v1/trades", tags=["Trades"])
 app.include_router(contracts.router, prefix="/api/v1/contracts", tags=["Contracts"])
 app.include_router(payments.router, prefix="/api/v1/payments", tags=["Payments"])
 app.include_router(mcp.router, prefix="/api/v1/mcp", tags=["MCP"])
+app.include_router(agents_router, prefix="/api/v1/agents", tags=["Agents"])
+app.include_router(nanda_router, prefix="/api/v1/nanda", tags=["NANDA"])
+app.include_router(ws_router, tags=["WebSocket"])
 
 
 # ── Health check ──────────────────────────────────────────────────────────────
