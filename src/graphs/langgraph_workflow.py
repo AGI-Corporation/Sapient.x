@@ -98,7 +98,7 @@ In 2-3 sentences, assess the parcel's current situation and key opportunities.""
             "Consider trading excess balance or leasing unused capacity."
         )
 
-    return {**state, "assessment": assessment}
+    return {**state, "assessment": assessment, "iteration": state.get("iteration", 0) + 1}
 
 
 def plan_node(state: ParcelOptState) -> ParcelOptState:

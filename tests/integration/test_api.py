@@ -1,279 +1,336 @@
 """Integration tests for FastAPI endpoints.
 
 Tests the Web4AGI API endpoints including:
-- Agent CRUD operations
-- Authentication and authorization
+- Parcel CRUD operations
+- Trading operations
+- Contract lifecycle
+- MCP tool and messaging endpoints
 - Error handling and validation
 - Request/response formats
 """
 
-from unittest.mock import Mock, patch
-
 import pytest
 from fastapi.testclient import TestClient
 
-# Assuming FastAPI app is in src/api/app.py
-# from src.api.app import app
+from src.main import app
+
+client = TestClient(app)
 
 
-class TestAgentEndpoints:
-    """Test agent-related API endpoints."""
+class TestParcelEndpoints:
+    """Test parcel-related API endpoints."""
 
-    @pytest.fixture
-    def client(self):
-        """Create test client with mocked dependencies."""
-        # Mock the FastAPI app
-        app_mock = Mock()
-        return TestClient(app_mock)
-
-    @pytest.fixture
-    def agent_data(self):
-        """Sample agent creation data."""
-        return {
-            "parcel_id": "parcel_001",
-            "model": "gpt-4",
-            "wallet_address": "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb",
-            "initial_balance": 1000.0,
-            "config": {"max_iterations": 10, "trade_limit": 5000.0},
+    def test_create_parcel(self):
+        """Test POST /api/v1/parcels - Create new parcel agent."""
+        parcel_data = {
+            "owner_address": "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb",
+            "location": {"lat": 37.7749, "lng": -122.4194, "alt": 0.0},
+            "metadata": {"zone": "sf-downtown"},
         }
 
-    @patch("src.agents.parcel_agent.ParcelAgent")
-    def test_create_agent(self, mock_agent_class, client, agent_data):
-        """Test POST /api/agents - Create new agent."""
-        mock_agent = Mock()
-        mock_agent.id = "agent_123"
-        mock_agent.parcel_id = agent_data["parcel_id"]
-        mock_agent_class.return_value = mock_agent
-
-        response = client.post("/api/agents", json=agent_data)
+        response = client.post("/api/v1/parcels/", json=parcel_data)
 
         assert response.status_code == 201
         data = response.json()
-        assert data["id"] == "agent_123"
-        assert data["parcel_id"] == "parcel_001"
+        assert "parcel_id" in data
+        assert data["owner"] == parcel_data["owner_address"].lower()
 
-    def test_create_agent_invalid_data(self, client):
-        """Test agent creation with invalid data."""
-        invalid_data = {"parcel_id": ""}  # Missing required fields
+    def test_create_parcel_invalid_address(self):
+        """Test parcel creation with an invalid wallet address."""
+        invalid_data = {
+            "owner_address": "not_a_wallet",
+            "location": {"lat": 37.7, "lng": -122.4, "alt": 0.0},
+        }
 
-        response = client.post("/api/agents", json=invalid_data)
+        response = client.post("/api/v1/parcels/", json=invalid_data)
 
-        assert response.status_code == 422  # Validation error
+        assert response.status_code == 422
         assert "detail" in response.json()
 
-    @patch("src.agents.parcel_agent.ParcelAgent")
-    def test_get_agent(self, mock_agent_class, client):
-        """Test GET /api/agents/{agent_id} - Retrieve agent."""
-        mock_agent = Mock()
-        mock_agent.id = "agent_123"
-        mock_agent.status = "active"
-        mock_agent.balance = 1000.0
-
-        response = client.get("/api/agents/agent_123")
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["id"] == "agent_123"
-
-    def test_get_agent_not_found(self, client):
-        """Test retrieving non-existent agent."""
-        response = client.get("/api/agents/nonexistent")
-
-        assert response.status_code == 404
-        assert "not found" in response.json()["detail"].lower()
-
-    @patch("src.agents.parcel_agent.ParcelAgent")
-    def test_list_agents(self, mock_agent_class, client):
-        """Test GET /api/agents - List all agents."""
-        response = client.get("/api/agents")
+    def test_list_parcels(self):
+        """Test GET /api/v1/parcels - List all parcels."""
+        response = client.get("/api/v1/parcels/")
 
         assert response.status_code == 200
         data = response.json()
         assert isinstance(data, list)
 
-    @patch("src.agents.parcel_agent.ParcelAgent")
-    def test_update_agent(self, mock_agent_class, client):
-        """Test PATCH /api/agents/{agent_id} - Update agent."""
-        update_data = {"status": "paused", "config": {"max_iterations": 20}}
+    def test_get_parcel(self):
+        """Test GET /api/v1/parcels/{parcel_id} - Retrieve parcel."""
+        # Create a parcel first
+        create_resp = client.post(
+            "/api/v1/parcels/",
+            json={
+                "owner_address": "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb",
+                "location": {"lat": 37.7, "lng": -122.4, "alt": 0.0},
+            },
+        )
+        assert create_resp.status_code == 201
+        parcel_id = create_resp.json()["parcel_id"]
 
-        response = client.patch("/api/agents/agent_123", json=update_data)
+        response = client.get(f"/api/v1/parcels/{parcel_id}")
 
         assert response.status_code == 200
         data = response.json()
-        assert data["status"] == "paused"
+        assert data["parcel_id"] == parcel_id
 
-    @patch("src.agents.parcel_agent.ParcelAgent")
-    def test_delete_agent(self, mock_agent_class, client):
-        """Test DELETE /api/agents/{agent_id} - Delete agent."""
-        response = client.delete("/api/agents/agent_123")
+    def test_get_parcel_not_found(self):
+        """Test retrieving a non-existent parcel."""
+        response = client.get("/api/v1/parcels/nonexistent-parcel-id")
 
+        assert response.status_code == 404
+        assert "not found" in response.json()["detail"].lower()
+
+    def test_update_parcel(self):
+        """Test PATCH /api/v1/parcels/{parcel_id} - Update parcel."""
+        create_resp = client.post(
+            "/api/v1/parcels/",
+            json={
+                "owner_address": "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb",
+                "location": {"lat": 37.7, "lng": -122.4, "alt": 0.0},
+            },
+        )
+        parcel_id = create_resp.json()["parcel_id"]
+
+        update_data = {"metadata": {"status": "leased", "tenant": "parcel-002"}}
+        response = client.patch(f"/api/v1/parcels/{parcel_id}", json=update_data)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["metadata"]["status"] == "leased"
+
+    def test_delete_parcel(self):
+        """Test DELETE /api/v1/parcels/{parcel_id} - Delete parcel."""
+        create_resp = client.post(
+            "/api/v1/parcels/",
+            json={
+                "owner_address": "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb",
+                "location": {"lat": 37.7, "lng": -122.4, "alt": 0.0},
+            },
+        )
+        parcel_id = create_resp.json()["parcel_id"]
+
+        response = client.delete(f"/api/v1/parcels/{parcel_id}")
         assert response.status_code == 204
+
+        # Verify it's gone
+        get_resp = client.get(f"/api/v1/parcels/{parcel_id}")
+        assert get_resp.status_code == 404
 
 
 class TestTradeEndpoints:
     """Test trading-related API endpoints."""
 
-    @pytest.fixture
-    def client(self):
-        app_mock = Mock()
-        return TestClient(app_mock)
+    def _create_parcel(self, owner: str = "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb") -> str:
+        """Helper: create a parcel and return its ID."""
+        resp = client.post(
+            "/api/v1/parcels/",
+            json={
+                "owner_address": owner,
+                "location": {"lat": 37.7, "lng": -122.4, "alt": 0.0},
+            },
+        )
+        assert resp.status_code == 201
+        return resp.json()["parcel_id"]
 
-    @pytest.fixture
-    def trade_request(self):
-        """Sample trade request data."""
-        return {
-            "agent_id": "agent_123",
-            "action": "buy",
-            "parcel_id": "parcel_002",
-            "amount": 100.0,
-            "price": 50.0,
+    def test_create_offer(self):
+        """Test POST /api/v1/trades/offers - Create a trade offer."""
+        seller_id = self._create_parcel()
+        offer_data = {
+            "seller_parcel_id": seller_id,
+            "asset": "bandwidth",
+            "amount_usdx": 25.0,
+            "ttl_seconds": 300,
         }
 
-    @patch("src.agents.trade_agent.TradeAgent")
-    def test_create_trade(self, mock_trade_class, client, trade_request):
-        """Test POST /api/trades - Create trade order."""
-        mock_trade = Mock()
-        mock_trade.id = "trade_456"
-        mock_trade.status = "pending"
-        mock_trade_class.return_value = mock_trade
-
-        response = client.post("/api/trades", json=trade_request)
+        response = client.post("/api/v1/trades/offers", json=offer_data)
 
         assert response.status_code == 201
         data = response.json()
-        assert data["id"] == "trade_456"
-        assert data["status"] == "pending"
+        assert "offer_id" in data
+        assert data["asset"] == "bandwidth"
 
-    def test_create_trade_insufficient_balance(self, client, trade_request):
-        """Test trade creation with insufficient balance."""
-        trade_request["amount"] = 999999.0  # Unrealistic amount
+    def test_place_bid(self):
+        """Test POST /api/v1/trades/offers/{offer_id}/bid - Place a bid."""
+        seller_id = self._create_parcel()
+        offer_resp = client.post(
+            "/api/v1/trades/offers",
+            json={
+                "seller_parcel_id": seller_id,
+                "asset": "compute",
+                "amount_usdx": 10.0,
+                "ttl_seconds": 300,
+            },
+        )
+        offer_id = offer_resp.json()["offer_id"]
 
-        response = client.post("/api/trades", json=trade_request)
-
-        assert response.status_code == 400
-        assert "insufficient balance" in response.json()["detail"].lower()
-
-    @patch("src.agents.trade_agent.TradeAgent")
-    def test_get_trade_status(self, mock_trade_class, client):
-        """Test GET /api/trades/{trade_id} - Get trade status."""
-        response = client.get("/api/trades/trade_456")
-
-        assert response.status_code == 200
-        data = response.json()
-        assert "status" in data
-        assert data["status"] in ["pending", "completed", "failed", "cancelled"]
-
-    @patch("src.agents.trade_agent.TradeAgent")
-    def test_cancel_trade(self, mock_trade_class, client):
-        """Test POST /api/trades/{trade_id}/cancel - Cancel trade."""
-        response = client.post("/api/trades/trade_456/cancel")
+        bid_data = {"offer_id": offer_id, "bidder_parcel_id": "parcel-bidder", "bid_amount_usdx": 12.0}
+        response = client.post(f"/api/v1/trades/offers/{offer_id}/bid", json=bid_data)
 
         assert response.status_code == 200
         data = response.json()
-        assert data["status"] == "cancelled"
+        assert data["success"] is True
+
+    def test_close_offer(self):
+        """Test POST /api/v1/trades/offers/{offer_id}/close - Close an offer."""
+        seller_id = self._create_parcel()
+        offer_resp = client.post(
+            "/api/v1/trades/offers",
+            json={
+                "seller_parcel_id": seller_id,
+                "asset": "storage",
+                "amount_usdx": 5.0,
+                "ttl_seconds": 300,
+            },
+        )
+        offer_id = offer_resp.json()["offer_id"]
+        # Place a bid first so close has a winner
+        client.post(
+            f"/api/v1/trades/offers/{offer_id}/bid",
+            json={"offer_id": offer_id, "bidder_parcel_id": "bidder-99", "bid_amount_usdx": 6.0},
+        )
+
+        response = client.post(f"/api/v1/trades/offers/{offer_id}/close")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+
+    def test_trade_history(self):
+        """Test GET /api/v1/trades/history - Get trade history."""
+        response = client.get("/api/v1/trades/history")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
 
 
 class TestContractEndpoints:
     """Test contract-related API endpoints."""
 
-    @pytest.fixture
-    def client(self):
-        app_mock = Mock()
-        return TestClient(app_mock)
-
-    @pytest.fixture
-    def contract_data(self):
-        """Sample contract creation data."""
-        return {
-            "agent_id": "agent_123",
-            "counterparty_id": "agent_456",
-            "terms": {"parcel_id": "parcel_002", "price": 5000.0, "delivery_date": "2026-04-01"},
-            "type": "sale_agreement",
+    def test_create_contract(self):
+        """Test POST /api/v1/contracts - Create contract."""
+        contract_data = {
+            "contract_type": "parcel_lease",
+            "party_a": "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb",
+            "party_b": "0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063",
+            "terms": {"monthly_rent_usdx": 50.0, "duration_months": 12},
         }
 
-    @patch("src.contracts.manager.ContractManager")
-    def test_create_contract(self, mock_contract_class, client, contract_data):
-        """Test POST /api/contracts - Create contract."""
-        mock_contract = Mock()
-        mock_contract.id = "contract_789"
-        mock_contract.status = "pending"
-        mock_contract_class.return_value = mock_contract
-
-        response = client.post("/api/contracts", json=contract_data)
+        response = client.post("/api/v1/contracts/", json=contract_data)
 
         assert response.status_code == 201
         data = response.json()
-        assert data["id"] == "contract_789"
-        assert data["status"] == "pending"
+        assert "contract_id" in data
+        assert data["status"] == "pending_signature"
 
-    @patch("src.contracts.manager.ContractManager")
-    def test_sign_contract(self, mock_contract_class, client):
-        """Test POST /api/contracts/{contract_id}/sign - Sign contract."""
-        signature_data = {"agent_id": "agent_123", "signature": "0xsignature123"}
+    def test_get_contract(self):
+        """Test GET /api/v1/contracts/{contract_id} - Retrieve contract."""
+        create_resp = client.post(
+            "/api/v1/contracts/",
+            json={
+                "contract_type": "data_access",
+                "party_a": "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb",
+                "party_b": "0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063",
+                "terms": {"dataset": "sf-parcels", "price_usdx": 100.0},
+            },
+        )
+        assert create_resp.status_code == 201
+        contract_id = create_resp.json()["contract_id"]
 
-        response = client.post("/api/contracts/contract_789/sign", json=signature_data)
+        response = client.get(f"/api/v1/contracts/{contract_id}")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["contract_id"] == contract_id
+
+    def test_get_contract_not_found(self):
+        """Test retrieving a non-existent contract."""
+        response = client.get("/api/v1/contracts/nonexistent-contract")
+
+        assert response.status_code == 404
+
+    def test_sign_contract(self):
+        """Test POST /api/v1/contracts/{contract_id}/sign - Sign contract."""
+        party_a = "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb"
+        party_b = "0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063"
+        create_resp = client.post(
+            "/api/v1/contracts/",
+            json={
+                "contract_type": "parcel_lease",
+                "party_a": party_a,
+                "party_b": party_b,
+                "terms": {"rent": 100.0},
+            },
+        )
+        contract_id = create_resp.json()["contract_id"]
+
+        response = client.post(
+            f"/api/v1/contracts/{contract_id}/sign",
+            json={"agent_id": party_a, "signature": "0xsig_party_a"},
+        )
 
         assert response.status_code == 200
         data = response.json()
         assert "signatures" in data
 
-    @patch("src.contracts.manager.ContractManager")
-    def test_get_contract(self, mock_contract_class, client):
-        """Test GET /api/contracts/{contract_id} - Retrieve contract."""
-        response = client.get("/api/contracts/contract_789")
+    def test_execute_contract(self):
+        """Test POST /api/v1/contracts/{contract_id}/execute - Execute signed contract."""
+        party_a = "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb"
+        party_b = "0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063"
+        create_resp = client.post(
+            "/api/v1/contracts/",
+            json={
+                "contract_type": "parcel_lease",
+                "party_a": party_a,
+                "party_b": party_b,
+                "terms": {"rent": 50.0},
+            },
+        )
+        contract_id = create_resp.json()["contract_id"]
 
-        assert response.status_code == 200
-        data = response.json()
-        assert data["id"] == "contract_789"
-
-    @patch("src.contracts.manager.ContractManager")
-    def test_execute_contract(self, mock_contract_class, client):
-        """Test POST /api/contracts/{contract_id}/execute - Execute signed contract."""
-        response = client.post("/api/contracts/contract_789/execute")
+        response = client.post(f"/api/v1/contracts/{contract_id}/execute")
 
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "executed"
 
 
-class TestAuthenticationEndpoints:
-    """Test authentication and authorization."""
+class TestMCPEndpoints:
+    """Test MCP tool and messaging endpoints."""
 
-    @pytest.fixture
-    def client(self):
-        app_mock = Mock()
-        return TestClient(app_mock)
-
-    def test_login(self, client):
-        """Test POST /api/auth/login - User authentication."""
-        credentials = {"username": "testuser", "password": "testpass123"}
-
-        response = client.post("/api/auth/login", json=credentials)
+    def test_list_tools(self):
+        """Test GET /api/v1/mcp/tools - List available tools."""
+        response = client.get("/api/v1/mcp/tools")
 
         assert response.status_code == 200
         data = response.json()
-        assert "access_token" in data
-        assert "token_type" in data
+        assert "tools" in data
+        assert isinstance(data["tools"], list)
+        assert data["count"] >= 0
 
-    def test_login_invalid_credentials(self, client):
-        """Test login with invalid credentials."""
-        credentials = {"username": "wronguser", "password": "wrongpass"}
+    def test_call_tool(self):
+        """Test POST /api/v1/mcp/tools/call - Call an MCP tool."""
+        payload = {"tool_name": "parcel.get_state", "arguments": {"parcel_id": "test-001"}}
 
-        response = client.post("/api/auth/login", json=credentials)
-
-        assert response.status_code == 401
-
-    def test_protected_endpoint_no_auth(self, client):
-        """Test accessing protected endpoint without authentication."""
-        response = client.get("/api/agents")
-
-        # Should require authentication
-        assert response.status_code in [401, 403]
-
-    def test_protected_endpoint_with_token(self, client):
-        """Test accessing protected endpoint with valid token."""
-        headers = {"Authorization": "Bearer valid_token_123"}
-
-        response = client.get("/api/agents", headers=headers)
+        response = client.post("/api/v1/mcp/tools/call", json=payload)
 
         assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+
+    def test_send_message(self):
+        """Test POST /api/v1/mcp/messages - Send MCP message."""
+        msg = {
+            "from_parcel_id": "parcel-001",
+            "to_parcel_id": "parcel-002",
+            "msg_type": "trade_request",
+            "payload": {"amount": 10.0},
+        }
+
+        response = client.post("/api/v1/mcp/messages", json=msg)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+
