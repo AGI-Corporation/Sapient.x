@@ -29,7 +29,7 @@ async def call_tool(call: MCPToolCall) -> Any:
     """Invoke an MCP tool by name with the supplied arguments."""
     result = await _PLATFORM_MCP.call_tool(call.tool_name, call.arguments)
     if not result.get("success"):
-        raise HTTPException(status_code=400, detail=result.get("error", "Tool call failed"))
+        raise HTTPException(status_code=400, detail="Tool call failed")
     return result
 
 
@@ -45,7 +45,7 @@ async def send_message(msg: MCPMessage) -> Any:
         },
     )
     if not result.get("success"):
-        raise HTTPException(status_code=400, detail=result.get("error", "Message send failed"))
+        raise HTTPException(status_code=400, detail="Message send failed")
     return result
 
 

@@ -8,7 +8,7 @@ Manages the full lifecycle of parcel service agreements:
 """
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 
@@ -46,7 +46,7 @@ class ContractManager:
             "status": "pending_signature",
             "required_signers": signers,
             "signatures": {},
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
             "executed_at": None,
             "tx_hash": None,
         }
@@ -94,7 +94,7 @@ class ContractManager:
         contract = self._get(contract_id)
         tx_hash = f"0xtx_{contract_id[:8]}"
         contract["status"] = "executed"
-        contract["executed_at"] = datetime.utcnow().isoformat()
+        contract["executed_at"] = datetime.now(UTC).isoformat()
         contract["tx_hash"] = tx_hash
         return {"status": "executed", "tx_hash": tx_hash, "contract_id": contract_id}
 

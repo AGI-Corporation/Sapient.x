@@ -35,7 +35,7 @@ class TestParcelEndpoints:
         assert "parcel_id" in data
         assert data["owner"] == parcel_data["owner_address"].lower()
 
-    def test_create_parcel_invalid_address(self):
+    def test_create_parcel_invalid_owner_address(self):
         """Test parcel creation with an invalid wallet address."""
         invalid_data = {
             "owner_address": "not_a_wallet",

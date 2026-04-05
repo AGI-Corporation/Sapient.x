@@ -2,7 +2,8 @@
 
 from typing import Any
 
-from fastapi import APIRouter, Body, HTTPException
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
 from src.contracts.manager import ContractManager
 from src.models.parcel_models import ContractRequest, ContractResponse
@@ -11,6 +12,11 @@ router = APIRouter()
 
 # Module-level singleton
 _CONTRACT_MANAGER = ContractManager()
+
+
+class SignatureRequest(BaseModel):
+    agent_id: str
+    signature: str
 
 
 @router.post("/", response_model=ContractResponse, status_code=201)
@@ -57,14 +63,10 @@ async def get_contract(contract_id: str) -> Any:
 
 
 @router.post("/{contract_id}/sign")
-async def sign_contract(
-    contract_id: str,
-    agent_id: str = Body(...),
-    signature: str = Body(...),
-) -> Any:
+async def sign_contract(contract_id: str, data: SignatureRequest) -> Any:
     """Record a party's digital signature on a contract."""
     try:
-        signed = _CONTRACT_MANAGER.sign(contract_id, agent_id, signature)
+        signed = _CONTRACT_MANAGER.sign(contract_id, data.agent_id, data.signature)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
